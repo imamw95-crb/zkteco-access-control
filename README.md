@@ -5,8 +5,15 @@ FastAPI + SQLAlchemy 2.0 + Alembic + APScheduler, dashboard satu berkas (vanilla
 build step), dan **Windows push agent** (Python 32-bit) sebagai satu-satunya jalur **menulis**
 ke panel.
 
-> Repo ini **privat** dan berisi detail infrastruktur (IP panel, nama ruangan). Jangan dijadikan
-> publik, dan jangan pernah `git add -f` berkas data/rahasia yang sudah diabaikan.
+> **Repo ini PUBLIK** (sejak 2026-09-18). Isinya kode + detail infrastruktur: IP panel
+> (`10.100.1.x`), IP server/agent, nama ruangan, dan kredensial bootstrap **default** yang
+> didokumentasikan (`AUTH_SEED_USERS`). Yang **tidak** ada di sini: data personel, sandi asli,
+> dan token. Semua IP adalah alamat privat yang tidak bisa dijangkau dari internet.
+>
+> Konsekuensinya: perlakukan inventaris panel sebagai informasi yang sudah diketahui publik, dan
+> **jangan pernah** `git add -f` berkas yang sudah diabaikan `.gitignore` (`live_check.db`,
+> `*.xls`, `.env`) — begitu masuk satu commit, blob-nya tersimpan permanen di riwayat publik.
+> Menjadikan repo ini privat lagi **tidak** menarik kembali salinan yang sudah dikloning orang lain.
 
 ## Isi
 
