@@ -1,0 +1,56 @@
+# ============================================================================
+#  JANGAN hapus baris data/rahasia di bawah ini.
+#
+#  `live_check.db` berisi 531 personel (nama, nomor kartu, NIK) + 2392 log akses,
+#  dan `*.xls` adalah ekspor HR. Kalau berkas itu pernah masuk satu commit saja,
+#  data itu ikut tercatat di riwayat git dan tetap bisa diambil walau dihapus
+#  setelahnya. Menuliskannya SEBELUM commit pertama adalah satu-satunya cara
+#  yang benar-benar aman.
+# ============================================================================
+
+# --- database & data pribadi -------------------------------------------------
+*.db
+*.db.*
+*.sqlite
+*.sqlite3
+*.bak
+*.xls
+*.xlsx
+backup new.bak
+Personnel_*.xls
+Departmenet.xls
+
+# --- rahasia -----------------------------------------------------------------
+.env
+*.env
+!.env.example
+CHECK-REPORT.txt
+BACKEND-SNIPPET.txt
+
+# --- log (bisa memuat token/IP panel) ----------------------------------------
+logs/
+*.log
+*.log.*
+agent.out.log*
+
+# --- Python ------------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# --- artefak build/installer (puluhan MB, bisa dibangun ulang) ---------------
+zkteco-backend/agent/installer/.cache/
+zkteco-backend/agent/installer/dist/
+zkteco-backend/deploy/*.tar.gz
+zkteco-backend/deploy/*.zip
+
+# --- OS / editor -------------------------------------------------------------
+Thumbs.db
+Desktop.ini
+*.log.1

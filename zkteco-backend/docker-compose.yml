@@ -1,0 +1,59 @@
+# Explicit project name: the deploy host already runs another compose stack, so
+# the generated `<folder>_<service>` names are not unique enough to rely on.
+name: zkteco
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zkteco}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zkteco}
+      POSTGRES_DB: ${POSTGRES_DB:-zkteco}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zkteco}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: .
+    # Same source of settings as the systemd install (`EnvironmentFile=.env`):
+    # without this the container sees neither PUSH_AGENT_URL nor
+    # PUSH_AGENT_TOKEN, and every push answers 503.
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-zkteco}:${POSTGRES_PASSWORD:-zkteco}@db:5432/${POSTGRES_DB:-zkteco}
+      SCHEDULER_ENABLED: "false"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-zkteco}:${POSTGRES_PASSWORD:-zkteco}@db:5432/${POSTGRES_DB:-zkteco}
+      SCHEDULER_ENABLED: "true"
+      LOG_POLL_INTERVAL_SECONDS: "60"
+      HEALTH_CHECK_INTERVAL_SECONDS: "120"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.workers.run
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+

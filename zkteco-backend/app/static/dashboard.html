@@ -1,0 +1,3394 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZKTeco C3 Access Control</title>
+  <style>
+    :root {
+      --bg: #0f172a; --panel: #1e293b; --line: #334155;
+      --text: #e2e8f0; --muted: #94a3b8; --accent: #2563eb;
+      --ok: #4ade80; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 2rem;
+      background: var(--bg); color: var(--text);
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
+    .sub { color: var(--muted); font-size: .85rem; margin: 0 0 1.25rem; }
+    /* Kredit pembuat. Sengaja kecil dan di ATAS judul supaya terbaca sebagai
+       keterangan, bukan bagian dari nama produk. */
+    .credit { color: var(--muted); font-size: .75rem; margin: 0 0 .15rem; }
+    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+    .tab {
+      background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+      padding: .6rem 1rem; cursor: pointer; font-size: .95rem; font-family: inherit;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .panel[hidden] { display: none; }
+    /* `[hidden]` on its own is not enough here: the browser's rule for it is
+       weaker than a class that sets `display`, and `.modal-overlay` is
+       `display: flex`. An overlay marked hidden then stays on screen — the login
+       box sitting on top of the dashboard after a successful login. */
+    .modal-overlay[hidden] { display: none; }
+    .bar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: .75rem; }
+    button {
+      background: var(--accent); color: #fff; border: 0; padding: .45rem .9rem;
+      border-radius: 6px; cursor: pointer; font-size: .88rem; font-family: inherit;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #475569; cursor: progress; }
+    button.ghost { background: #334155; }
+    button.ghost:hover { background: #475569; }
+    button.danger { background: #7f1d1d; }
+    button.danger:hover { background: #991b1b; }
+    button.tiny { padding: .2rem .5rem; font-size: .78rem; }
+    input, select, textarea {
+      padding: .45rem .6rem; border-radius: 6px; border: 1px solid var(--line);
+      background: #0b1220; color: var(--text); font-size: .88rem; font-family: inherit;
+    }
+    textarea { width: 100%; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: .5rem .7rem; border-bottom: 1px solid var(--line); text-align: left; font-size: .88rem; }
+    th { background: var(--panel); font-weight: 600; position: sticky; top: 0; }
+    tbody tr:hover { background: #131f36; }
+    tbody tr.clickable { cursor: pointer; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .on { color: var(--ok); } .off { color: var(--bad); }
+    .pill {
+      display: inline-block; background: #1e3a8a; color: #bfdbfe; border-radius: 999px;
+      padding: .1rem .5rem; font-size: .74rem; margin: .1rem .15rem .1rem 0; white-space: nowrap;
+    }
+    .pill.none { background: #334155; color: var(--muted); }
+    .msg { color: var(--muted); font-size: .85rem; }
+    .msg.error { color: var(--bad); }
+    /* A fleet-wide push walks all 23 panels and can run for half a minute. An
+       unmoving "mengirim..." reads as a hang, and the operator clicks again —
+       which queues a second sweep against panels that accept only ONE
+       connection at a time. So the wait must be visibly alive. */
+    .msg.busy { color: #93c5fd; display: inline-flex; align-items: center; gap: .45rem; }
+    .spinner {
+      width: .78rem; height: .78rem; flex: 0 0 auto; border-radius: 50%;
+      border: 2px solid rgba(147, 197, 253, .28); border-top-color: #93c5fd;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .check {
+      display: flex; align-items: center; gap: .4rem; cursor: pointer;
+      font-size: .82rem; color: var(--muted); padding-bottom: .35rem;
+    }
+    .check input { accent-color: #2563eb; margin: 0; }
+    button[disabled] { opacity: .5; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1.25rem; }
+    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #111c31; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+    .card h3 { margin: 0 0 .2rem; font-size: 1rem; }
+    .card h4 { margin: 1rem 0 .4rem; font-size: .9rem; }
+    .card .hint { color: var(--muted); font-size: .8rem; margin: 0 0 .8rem; }
+    .empty { color: var(--muted); padding: 1rem .2rem; font-size: .88rem; }
+    .scroll { max-height: 60vh; overflow: auto; }
+    .form-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; }
+    .field { display: flex; flex-direction: column; gap: .25rem; }
+    .field label { font-size: .75rem; color: var(--muted); }
+    .level-picker {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+      gap: .1rem .8rem; max-height: 9rem; overflow: auto; margin-top: .3rem;
+      border: 1px solid var(--line); border-radius: 6px; padding: .5rem .65rem;
+      background: #0e1729;
+    }
+    .level-picker label {
+      display: flex; align-items: center; gap: .4rem; cursor: pointer;
+      font-size: .82rem; padding: .12rem 0;
+    }
+    .level-picker input { accent-color: #2563eb; margin: 0; }
+    .level-picker .empty { padding: .2rem 0; margin: 0; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(2, 6, 23, .74);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem; z-index: 50;
+    }
+    .modal {
+      background: #111c31; border: 1px solid var(--line); border-radius: 10px;
+      padding: 1.1rem 1.25rem; width: 100%; max-width: 32rem;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, .55);
+    }
+    .modal h3 { margin: 0 0 .45rem; font-size: 1rem; }
+    .modal .hint { white-space: pre-line; margin: 0 0 1rem; }
+    /* Live per-panel log while a sweep runs: it scrolls, so it needs a height cap. */
+    .push-log {
+      max-height: 14rem; overflow: auto; margin-bottom: .6rem;
+      border: 1px solid var(--line); border-radius: 6px; padding: .45rem .6rem;
+      background: #0e1729; font-size: .8rem; line-height: 1.55;
+    }
+    /* One line per panel: a long device name must not push the verdict off screen. */
+    .push-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .push-log .ok { color: var(--ok); }
+    .push-log .bad { color: var(--bad); }
+    .push-log .skip { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <!-- Login gate. The shell carries no data of its own — every number, name and
+       button here is filled from /api, and every /api route refuses an
+       unauthenticated call — so hiding the app is convenience. The SERVER is the
+       lock; see `app/api/deps.py`. -->
+  <div class="modal-overlay" id="login-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h3 id="login-title">Masuk</h3>
+      <p class="hint">Dashboard ini hanya untuk petugas yang punya akun.</p>
+      <div class="field" style="margin-bottom:.6rem">
+        <label for="login-user">Nama pengguna</label>
+        <input id="login-user" name="username" autocomplete="username" size="26">
+      </div>
+      <div class="field" style="margin-bottom:.9rem">
+        <label for="login-pass">Password</label>
+        <input id="login-pass" type="password" name="password"
+               autocomplete="current-password" size="26">
+      </div>
+      <div class="form-row">
+        <button id="btn-login">Masuk</button>
+      </div>
+      <p class="msg" id="login-msg"></p>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+  <div class="bar" style="justify-content:space-between; align-items:flex-start">
+    <div>
+      <p class="credit">Lisensi By Gesik Dev</p>
+      <h1>ZKTeco C3 Access Control</h1>
+      <p class="sub" style="margin-bottom:0">Pengganti ZKAccess 3.5 &mdash; tanpa batas pintu/user</p>
+    </div>
+    <div class="bar" style="margin:0">
+      <span class="pill" id="who"></span>
+      <button class="tiny ghost" id="btn-change-pass">Ganti password</button>
+      <button class="tiny ghost" id="btn-logout">Keluar</button>
+      <span class="msg" id="user-msg"></span>
+    </div>
+  </div>
+  <!-- The seeded accounts (admin/admin, hr/hr) must stop being used, but a login
+       is never BLOCKED over it: locking the only admin out of a LAN dashboard is
+       worse than a default password. So this warns, loudly and every time. -->
+  <p class="msg error" id="default-pass-warning" hidden></p>
+
+  <nav class="tabs">
+    <button class="tab" data-tab="devices">Device</button>
+    <button class="tab" data-tab="levels">Access Level</button>
+    <!-- Personel is the tab the page opens on: looking somebody up (or fixing a
+         card / a level) is the daily job, and the Device tab is for changing
+         hardware. The `hidden` attributes below have to match this choice. -->
+    <button class="tab active" data-tab="personnel">Personel</button>
+    <button class="tab" data-tab="departments">Departemen</button>
+    <button class="tab" data-tab="scan">Cari Device</button>
+    <button class="tab" data-tab="monitor">Monitoring</button>
+    <!-- Admin only, and `hidden` from the start: an HR account must never see a
+         tab whose every request would answer 403. -->
+    <button class="tab" data-tab="users" hidden>Pengguna</button>
+  </nav>
+
+  <!-- ==================== DEVICES ==================== -->
+  <section class="panel" id="panel-devices" hidden>
+    <div class="card" style="margin-bottom:1.25rem">
+      <h3 id="dev-form-title">Tambah device</h3>
+      <p class="hint" id="dev-form-hint">
+        Daftarkan panel C3-100/200/300/400 baru. Default port 4370.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="d-name">Nama device</label>
+          <input id="d-name" size="24" placeholder="IGD Kiri">
+        </div>
+        <div class="field">
+          <label for="d-ip">IP address</label>
+          <input id="d-ip" size="16" placeholder="10.100.1.14">
+        </div>
+        <div class="field">
+          <label for="d-port">Port</label>
+          <input id="d-port" size="7" value="4370">
+        </div>
+        <div class="field">
+          <label for="d-password">Password</label>
+          <input id="d-password" size="12" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="d-location">Lokasi</label>
+          <input id="d-location" size="18" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="d-area">Area</label>
+          <input id="d-area" size="14" placeholder="opsional">
+        </div>
+        <button id="btn-d-save">Tambah</button>
+        <button class="ghost" id="btn-d-cancel" hidden>Batal</button>
+      </div>
+      <p class="msg" id="dev-form-msg" style="margin:.7rem 0 0"></p>
+    </div>
+
+    <div class="bar">
+      <button id="btn-dev-refresh">Refresh</button>
+      <button class="ghost" id="btn-dev-info">Get Info (semua device)</button>
+      <button class="ghost" id="btn-dev-discover">Cari device di jaringan</button>
+      <span class="msg" id="dev-msg"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Device Name</th><th>Serial Number</th><th>IP Address</th>
+            <th class="num">Personnel Count</th><th>Firmware Version</th>
+            <th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="dev-body"></tbody>
+      </table>
+    </div>
+    <div id="dev-discover-result"></div>
+    <div id="dev-detail"></div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h3>Buka pintu (remote)</h3>
+      <p class="hint">
+        Mengirim perintah buka ke panel, jadi pintu fisiknya benar-benar terbuka
+        selama durasi di bawah. Selalu ada konfirmasi sebelum perintah dikirim.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="o-device">Device</label>
+          <select id="o-device"><option value="">(pilih device)</option></select>
+        </div>
+        <div class="field">
+          <label for="o-door">Pintu</label>
+          <select id="o-door"></select>
+        </div>
+        <div class="field">
+          <label for="o-duration">Durasi (detik)</label>
+          <input id="o-duration" type="number" min="1" max="600" step="1"
+                 value="15" size="6">
+        </div>
+        <button class="danger" id="btn-o-open">Buka pintu</button>
+        <span class="msg" id="o-msg"></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h3>Kirim data personel ke panel</h3>
+      <p class="hint">
+        Menulis data personel dari dashboard ke panel yang dipilih. Isinya
+        dihitung dari access level yang memakai pintu panel tersebut. Pakai
+        "Cek dulu" untuk melihat jumlahnya sebelum benar-benar menulis.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="s-device">Device</label>
+          <select id="s-device"><option value="">(pilih device)</option></select>
+        </div>
+        <button class="ghost" id="btn-s-dry">Cek dulu (dry run)</button>
+        <button id="btn-s-push">Kirim ke panel</button>
+        <span class="msg" id="s-msg"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== ACCESS LEVELS ==================== -->
+  <section class="panel" id="panel-levels" hidden>
+    <div class="grid">
+      <div>
+        <div class="card" style="margin-bottom:1rem">
+          <h3>Buat access level</h3>
+          <p class="hint">
+            Level baru belum punya pintu maupun anggota. Setelah dibuat, levelnya
+            langsung terbuka di kanan untuk ditambahkan pintu dan anggotanya.
+          </p>
+          <div class="form-row">
+            <div class="field">
+              <label for="l-name">Nama</label>
+              <input id="l-name" size="18" placeholder="ICU">
+            </div>
+            <div class="field">
+              <label for="l-desc">Deskripsi</label>
+              <input id="l-desc" size="20" placeholder="opsional">
+            </div>
+            <div class="field">
+              <label for="l-tz">Jam akses</label>
+              <select id="l-tz"></select>
+            </div>
+            <button id="btn-l-add">Buat</button>
+          </div>
+          <p class="msg" id="l-msg" style="margin:.7rem 0 0"></p>
+        </div>
+
+        <div class="bar">
+          <button id="btn-lvl-refresh">Refresh</button>
+          <span class="msg" id="lvl-msg"></span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr><th>Access Level</th><th class="num">Pintu</th>
+                  <th class="num">Anggota</th><th>Jam Akses</th></tr>
+            </thead>
+            <tbody id="lvl-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="lvl-title">Pilih access level</h3>
+        <p class="hint" id="lvl-hint">
+          Klik salah satu baris di kiri untuk melihat pintu dan anggotanya.
+        </p>
+        <div id="lvl-doors"></div>
+        <div id="lvl-members"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== PERSONNEL ==================== -->
+  <section class="panel" id="panel-personnel">
+    <div class="card" style="margin-bottom:1.25rem">
+      <h3 id="p-form-title">Tambah personel</h3>
+      <p class="hint" id="p-form-hint">
+        Isi data orang, centang access level-nya (boleh lebih dari satu), lalu
+        simpan. Badge / PIN dan nomor kartu tidak boleh sama dengan personel lain.
+        Menyimpan juga mengirim orang ini ke semua panel yang seharusnya memuatnya
+        (lihat centang di bawah) &mdash; kalau tidak, panel masih memegang hak lama.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="p-badge">Badge / PIN</label>
+          <input id="p-badge" size="14" placeholder="202307056">
+        </div>
+        <div class="field">
+          <label for="p-name">Nama</label>
+          <input id="p-name" size="26" placeholder="Nama lengkap">
+        </div>
+        <div class="field">
+          <label for="p-card">No. Kartu</label>
+          <input id="p-card" size="14" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="p-dept">Departemen</label>
+          <select id="p-dept"><option value="">(belum ada)</option></select>
+        </div>
+        <!-- Saving only changes the dashboard; a panel keeps the OLD rights until
+             it is written to. That silent divergence is the most confusing failure
+             this system has, so syncing is part of the save by default. Uncheck it
+             when the change must not reach the hardware yet (e.g. a card number
+             that has not been confirmed at a reader — a wrong number is written
+             faithfully to every panel and the door simply never opens). -->
+        <label class="check" for="p-sync-auto"
+               title="Setelah disimpan, orang ini langsung dikirim ke semua panel yang seharusnya memuatnya. Matikan kalau panel belum boleh diubah.">
+          <input type="checkbox" id="p-sync-auto" checked>
+          Setelah simpan, kirim ke semua panel
+        </label>
+        <button id="btn-p-save">Tambah</button>
+        <button class="ghost" id="btn-p-cancel" hidden>Batal</button>
+        <button class="ghost" id="btn-p-push" hidden>Samakan ke semua panel</button>
+      </div>
+      <div style="margin-top:.8rem">
+        <div class="bar" style="margin:0">
+          <span style="font-size:.75rem;color:var(--muted)">
+            Access level &mdash; boleh dicentang lebih dari satu
+          </span>
+          <button class="tiny ghost" id="btn-p-level-none">Kosongkan</button>
+          <span class="msg" id="p-level-count">0 level dipilih</span>
+        </div>
+        <div class="level-picker" id="p-levels"></div>
+      </div>
+      <p class="msg" id="p-msg" style="margin:.7rem 0 0"></p>
+    </div>
+
+    <div class="bar">
+      <button id="btn-p-refresh">Refresh</button>
+      <input id="p-search" size="28" placeholder="Cari nama atau badge...">
+      <span class="msg" id="p-list-msg"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Badge / PIN</th><th>Nama</th><th>Kartu</th>
+              <th>Departemen</th><th>Access Level</th><th></th></tr>
+        </thead>
+        <tbody id="p-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ==================== DEPARTMENTS ==================== -->
+  <section class="panel" id="panel-departments" hidden>
+    <div class="card" style="margin-bottom:1.25rem">
+      <h3>Tambah departemen</h3>
+      <p class="hint">
+        Nama tidak boleh sama dengan departemen yang sudah ada. Pilih induk kalau
+        departemen ini di bawah departemen lain (mis. di bawah "RSMP PATROL");
+        dibiarkan kosong berarti di tingkat atas.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="dep-name">Nama</label>
+          <input id="dep-name" size="24" placeholder="Bidang Keperawatan">
+        </div>
+        <div class="field">
+          <label for="dep-parent">Induk</label>
+          <select id="dep-parent"><option value="">(tingkat atas)</option></select>
+        </div>
+        <div class="field">
+          <label for="dep-code">Kode</label>
+          <input id="dep-code" size="10" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="dep-desc">Deskripsi</label>
+          <input id="dep-desc" size="20" placeholder="opsional">
+        </div>
+        <button id="btn-dep-add">Tambah</button>
+        <span class="msg" id="dep-form-msg"></span>
+      </div>
+    </div>
+    <div class="bar">
+      <button id="btn-dept-refresh">Refresh</button>
+      <input id="dept-search" size="28" placeholder="Cari departemen...">
+      <span class="msg" id="dept-msg"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Departemen</th><th>Induk</th><th class="num">Personel</th></tr>
+        </thead>
+        <tbody id="dept-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ==================== CARI DEVICE (scan rentang IP) ==================== -->
+  <section class="panel" id="panel-scan" hidden>
+    <div class="card">
+      <h3>Cari device di jaringan (scan rentang IP)</h3>
+      <p class="hint">
+        Tombol "Cari device di jaringan" di tab Device memakai broadcast, jadi hanya
+        menemukan panel di subnet yang sama dengan server. Scan rentang IP juga
+        menjangkau subnet lain yang punya rute, mis. <b>10.100.1.0/24</b>.
+        Scan ini hanya membaca &mdash; tidak ada data personel, hak akses, atau
+        pengaturan jaringan panel yang diubah.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="sc-ranges">Rentang IP (CIDR, satu per baris)</label>
+          <textarea id="sc-ranges" rows="3" cols="30">10.100.1.0/24
+192.168.1.0/24</textarea>
+        </div>
+        <div class="field">
+          <label for="sc-port">Port</label>
+          <input id="sc-port" type="number" min="1" max="65535" value="4370" size="6">
+        </div>
+        <div class="field">
+          <label for="sc-timeout">Timeout (s)</label>
+          <input id="sc-timeout" type="number" min="0.1" max="10" step="0.1" value="1" size="6">
+        </div>
+        <label class="check" for="sc-identify"
+               title="Membaca serial, nama, dan firmware lewat koneksi ke panel. Panel C3 hanya menerima satu koneksi sekaligus, jadi langkah ini memakan waktu.">
+          <input type="checkbox" id="sc-identify" checked>
+          Baca identitas panel
+        </label>
+        <div class="field">
+          <label for="sc-location">Lokasi (device baru)</label>
+          <input id="sc-location" size="14" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="sc-area">Area (device baru)</label>
+          <input id="sc-area" size="12" placeholder="opsional">
+        </div>
+        <button id="btn-sc-run">Mulai scan</button>
+        <span class="msg" id="sc-msg"></span>
+      </div>
+      <p class="hint">
+        Panel yang belum ada di database dapat tombol <b>Tambah</b> (Lokasi/Area di
+        atas ikut tersimpan). Panel yang sudah terdaftar tapi menjawab di alamat
+        BERBEDA dapat tombol <b>Perbaiki IP di dashboard</b> &mdash; itu hanya
+        memperbaiki catatan di database, <b>tidak</b> mengubah pengaturan jaringan
+        panel.
+      </p>
+      <p class="msg" id="sc-progress" style="margin:.7rem 0 0"></p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>IP Address</th><th>IP di panel</th><th>Serial Number</th><th>Device Name</th>
+              <th>Firmware</th><th class="num">Pintu</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody id="sc-body">
+          <tr><td colspan="8" class="empty">Belum ada hasil scan.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h3>Ubah alamat jaringan panel</h3>
+      <p class="hint">
+        Sama seperti tombol <b>Modify IP Address</b> di ZKAccess: menulis IP, netmask,
+        dan gateway <b>langsung ke panel</b> &mdash; bukan ke database. Ini
+        satu-satunya operasi di sistem ini yang bisa membuat panel <b>tidak terjangkau
+        dan tidak bisa dikembalikan dari sini</b>: alamat yang salah hanya bisa
+        dibetulkan langsung di panel, di lokasinya. Karena itu tombol tulisnya baru
+        aktif setelah <b>Cek dulu (dry run)</b> untuk nilai yang sama persis.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="nc-device">Device</label>
+          <select id="nc-device"><option value="">(pilih device)</option></select>
+        </div>
+        <div class="field">
+          <label for="nc-ip">IP baru</label>
+          <input id="nc-ip" size="14" placeholder="10.100.1.30">
+        </div>
+        <div class="field">
+          <label for="nc-netmask">NetMask</label>
+          <input id="nc-netmask" size="14" placeholder="255.255.255.0">
+        </div>
+        <div class="field">
+          <label for="nc-gateway">Gateway</label>
+          <input id="nc-gateway" size="14" placeholder="kosong kalau tidak ada">
+        </div>
+        <button class="ghost" id="btn-nc-dry">Cek dulu (dry run)</button>
+        <button class="danger" id="btn-nc-write" disabled>Tulis ke panel</button>
+        <span class="msg" id="nc-msg"></span>
+      </div>
+      <p class="msg" id="nc-status" style="margin:.7rem 0 0"></p>
+      <p class="hint" id="nc-current">
+        Pilih device untuk membaca konfigurasi jaringan panel. Daftar ini memuat device
+        yang sudah terdaftar; panel yang baru ditemukan scan dan statusnya masih
+        "belum terdaftar" ditambahkan dulu lewat tombol <b>Tambah</b>. Netmask ikut
+        terisi otomatis (terbaca dari panel); <b>gateway tidak bisa dibaca</b> di
+        firmware ini, jadi isi manual kalau panel memakainya &mdash; menebak gateway
+        bisa memutus rute keluar panel.
+      </p>
+    </div>
+  </section>
+
+  <!-- ==================== MONITORING (realtime) ==================== -->
+  <section class="panel" id="panel-monitor" hidden>
+    <div class="card">
+      <h3>Monitoring akses &amp; kesehatan panel</h3>
+      <p class="hint">
+        Halaman ini membaca <b>database</b>, bukan panel. Panel C3 hanya menerima
+        <b>satu koneksi sekaligus</b>, jadi memantau langsung ke panel akan berebut
+        koneksi dengan scheduler dan push &mdash; panel yang sehat bisa tampak offline.
+        Isinya adalah log yang sudah ditarik scheduler dari panel.
+        Meninggalkan tab ini otomatis menghentikan feed.
+      </p>
+      <p class="msg" id="mon-poll-warning" hidden></p>
+      <div class="bar">
+        <button id="btn-mon-start">Mulai pantau</button>
+        <button class="ghost" id="btn-mon-stop" hidden>Berhenti</button>
+        <div class="field">
+          <label for="mon-interval">Interval periksa</label>
+          <select id="mon-interval">
+            <option value="2">2 detik</option>
+            <option value="5" selected>5 detik</option>
+            <option value="10">10 detik</option>
+            <option value="30">30 detik</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mon-date">Tanggal</label>
+          <input type="date" id="mon-date">
+        </div>
+        <button class="ghost" id="btn-mon-today">Hari ini</button>
+        <button class="ghost" id="btn-mon-all">Semua tanggal</button>
+        <button class="ghost" id="btn-mon-pull">Tarik log sekarang</button>
+        <span class="msg" id="mon-status">Belum memantau.</span>
+      </div>
+      <p class="hint">
+        <b>Tanggal</b> berlaku untuk keduanya: feed hanya menampilkan aktivitas hari
+        itu, dan <b>Tarik log sekarang</b> (<code>POST /api/logs/pull</code>) hanya
+        <b>menyimpan</b> baris hari itu. Panel selalu mengirim seluruh isi buffer
+        transaksinya sekali baca &mdash; jadi tanggal membatasi apa yang masuk
+        database, bukan apa yang dibaca; baris di luar tanggal dilaporkan sebagai
+        "dibuang". Tanpa tanggal (tombol <b>Semua tanggal</b>) semuanya disimpan.
+      </p>
+      <div class="bar" id="mon-stats"></div>
+      <div class="form-row">
+        <div class="field">
+          <label for="mon-filter">Filter feed (nama / no. kartu / panel)</label>
+          <input id="mon-filter" size="26" placeholder="mis. Budi atau 2150141426">
+        </div>
+        <label class="check" for="mon-only-denied">
+          <input type="checkbox" id="mon-only-denied">
+          Hanya akses ditolak
+        </label>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h4>Status panel</h4>
+      <p class="hint">
+        <b>Online/offline</b> berasal dari pemeriksaan berkala scheduler
+        (<code>health_check</code>), bukan dari koneksi langsung halaman ini.
+        <b>User di panel</b> adalah jumlah baris <code>user</code> yang terakhir terbaca.
+      </p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Panel</th><th>IP</th><th>Status</th><th>Terakhir terlihat</th>
+                <th>Log terakhir</th><th class="num">User di panel</th>
+                <th>Error terakhir</th></tr>
+          </thead>
+          <tbody id="mon-devices">
+            <tr><td colspan="7" class="empty">Belum ada panel terdaftar.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h4>Feed akses (terbaru di atas)</h4>
+      <p class="hint">
+        <span class="on">diterima</span> = panel menerima kartu (<code>EventType 0</code>);
+        <span class="off">ditolak</span> = kartu tidak dikenal
+        (<code>EventType 27</code>) &mdash; nomor kartu di baris itu adalah nomor yang
+        <b>benar-benar dibaca reader</b>, dan itulah alat diagnosis untuk nomor kartu
+        yang salah cetak. Kode lain ditampilkan apa adanya tanpa warna, karena
+        artinya belum terverifikasi &mdash; menebak "diterima" pada sebuah penolakan
+        lebih berbahaya daripada tidak ada warna.
+      </p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Waktu</th><th>Panel</th><th class="num">Pintu</th><th>Orang</th>
+                <th>Kartu</th><th>Mode</th><th>Hasil</th></tr>
+          </thead>
+          <tbody id="mon-feed">
+            <tr><td colspan="7" class="empty">Belum ada aktivitas.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== PENGGUNA (khusus admin) ==================== -->
+  <section class="panel" id="panel-users" hidden>
+    <div class="card" style="margin-bottom:1.25rem">
+      <h3>Tambah pengguna</h3>
+      <p class="hint">
+        <b>admin</b> boleh membuka semua tab dan semua pengaturan: device, kontrol pintu,
+        scan jaringan, alamat panel, jam akses, dan akun. <b>hr</b> hanya mengurus data
+        orang: personel (termasuk kirim ke panel), departemen, dan access level.
+        Password minimal 4 karakter.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="u-username">Nama pengguna</label>
+          <input id="u-username" size="16" placeholder="mis. rina">
+        </div>
+        <div class="field">
+          <label for="u-fullname">Nama lengkap</label>
+          <input id="u-fullname" size="20" placeholder="opsional">
+        </div>
+        <div class="field">
+          <label for="u-password">Password</label>
+          <input id="u-password" type="password" size="16" autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="u-role">Role</label>
+          <select id="u-role">
+            <option value="hr">HR (personel &amp; level)</option>
+            <option value="admin">Admin (semua setting)</option>
+          </select>
+        </div>
+        <button id="btn-u-add">Tambah</button>
+        <span class="msg" id="u-form-msg"></span>
+      </div>
+    </div>
+    <div class="bar">
+      <button id="btn-u-refresh">Refresh</button>
+      <span class="msg" id="u-msg"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Pengguna</th><th>Nama lengkap</th><th>Role</th><th>Status</th>
+              <th>Login terakhir</th><th>Aksi</th></tr>
+        </thead>
+        <tbody id="u-body"></tbody>
+      </table>
+    </div>
+  </section>
+  </div><!-- /#app -->
+
+<script>
+const $ = sel => document.querySelector(sel);
+
+function esc(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+async function api(path, method = 'GET', body = null) {
+  const options = { method, headers: {} };
+  if (body !== null) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, options);
+  if (res.status === 401) {
+    // An expired session must not surface as "Gagal memuat" on whichever panel
+    // happened to be refreshing: that reads as a broken tab. Show the login gate,
+    // which is the only thing the operator can act on.
+    showLogin('Sesi Anda sudah berakhir. Silakan masuk lagi.');
+    throw new Error('Sesi berakhir - silakan masuk lagi.');
+  }
+  const text = await res.text();
+  let payload = null;
+  if (text) { try { payload = JSON.parse(text); } catch { payload = text; } }
+  if (!res.ok) {
+    const detail = payload && payload.detail ? payload.detail : ('HTTP ' + res.status);
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return payload;
+}
+
+function say(el, text, isError = false) {
+  // Any running "busy" clock owns this element. Taking it over here stops it —
+  // otherwise a leftover interval from "Menyimpan..." keeps ticking on a detached
+  // node forever, one more per save.
+  if (el.busyTimer) { clearInterval(el.busyTimer); el.busyTimer = null; }
+  el.textContent = text || '';
+  el.classList.remove('busy');
+  el.classList.toggle('error', !!isError);
+}
+
+//: Shows a moving indicator plus the seconds already spent. A fleet-wide push
+//: walks 23 panels one after another and can take half a minute, so "still
+//: working" must be visible — otherwise the operator assumes a hang and clicks
+//: again, queueing a second sweep against panels that accept only one connection.
+//: Returns the cleanup function for the timer; always call it.
+function sayBusy(el, text) {
+  if (el.busyTimer) { clearInterval(el.busyTimer); el.busyTimer = null; }
+  el.classList.remove('error');
+  el.classList.add('busy');
+  el.innerHTML = '<span class="spinner"></span><span class="busy-text"></span>';
+  const label = el.querySelector('.busy-text');
+  const started = Date.now();
+  const paint = () => {
+    label.textContent = `${text} (${Math.round((Date.now() - started) / 1000)} detik)`;
+  };
+  paint();
+  const timer = setInterval(paint, 1000);
+  el.busyTimer = timer;
+  return () => {
+    clearInterval(timer);
+    if (el.busyTimer === timer) el.busyTimer = null;
+  };
+}
+
+function setButtonsBusy(buttons, busy) {
+  buttons.forEach(button => { button.disabled = !!busy; });
+}
+
+function levelPills(names) {
+  if (!names || !names.length) return '<span class="pill none">belum ada</span>';
+  return names.map(n => `<span class="pill">${esc(n)}</span>`).join('');
+}
+
+//: Native confirm() is not dependable here. Once a browser decides to suppress
+//: further dialogs (Chrome offers "prevent this page from creating additional
+//: dialogs" after a few, embedded webviews can block modals outright), confirm()
+//: returns false with no dialog and no explanation — the operator clicks a button
+//: and just sees "Dibatalkan" with nothing to act on. Rendering the confirmation
+//: in the page itself always appears, and can spell out exactly what is about to
+//: happen.
+function askConfirm({ title, detail, confirmLabel = 'Ya, lanjutkan' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>${esc(title)}</h3>
+        <p class="hint">${esc(detail)}</p>
+        <div class="form-row">
+          <button class="danger" data-answer="yes">${esc(confirmLabel)}</button>
+          <button class="ghost" data-answer="no">Batal</button>
+        </div>
+      </div>`;
+
+    const close = answer => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(answer);
+    };
+    const onKey = event => { if (event.key === 'Escape') close(false); };
+
+    overlay.querySelector('[data-answer="yes"]').addEventListener('click', () => close(true));
+    overlay.querySelector('[data-answer="no"]').addEventListener('click', () => close(false));
+    // Clicking the dimmed backdrop cancels; clicking inside the box must not.
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close(false);
+    });
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-answer="no"]').focus();
+  });
+}
+
+//: A modal form, for the same reason `askConfirm` exists: native `prompt()` is
+//: suppressed just as easily as `confirm()`, and then reports "cancelled" with no
+//: dialog at all — which is indistinguishable from a broken password reset.
+//: `validate(values)` returns an error message, or null when the values are fine.
+function askForm({ title, detail = '', fields, confirmLabel = 'Simpan', danger = false,
+                   validate = null }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>${esc(title)}</h3>
+        ${detail ? `<p class="hint">${esc(detail)}</p>` : ''}
+        ${fields.map(field => `
+          <div class="field" style="margin-bottom:.6rem">
+            <label for="ask-${esc(field.name)}">${esc(field.label)}</label>
+            <input id="ask-${esc(field.name)}" type="${esc(field.type || 'text')}"
+                   autocomplete="off" size="26">
+          </div>`).join('')}
+        <div class="form-row">
+          <button class="${danger ? 'danger' : ''}" data-answer="yes">${esc(confirmLabel)}</button>
+          <button class="ghost" data-answer="no">Batal</button>
+        </div>
+        <p class="msg" id="ask-msg"></p>
+      </div>`;
+
+    const read = () => Object.fromEntries(
+      fields.map(field => [field.name, overlay.querySelector('#ask-' + field.name).value])
+    );
+    const close = answer => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(answer);
+    };
+    const onKey = event => { if (event.key === 'Escape') close(null); };
+
+    overlay.querySelector('[data-answer="yes"]').addEventListener('click', () => {
+      const values = read();
+      const missing = fields.filter(field => !values[field.name].trim());
+      const box = overlay.querySelector('#ask-msg');
+      if (missing.length) {
+        box.textContent = 'Masih kosong: ' + missing.map(field => field.label).join(', ');
+        box.classList.add('error');
+        return;
+      }
+      const problem = validate ? validate(values) : null;
+      if (problem) {
+        box.textContent = problem;
+        box.classList.add('error');
+        return;
+      }
+      close(values);
+    });
+    overlay.querySelector('[data-answer="no"]').addEventListener('click', () => close(null));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close(null);
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    overlay.querySelector('input').focus();
+  });
+}
+
+/* ---------------------------- login & role ---------------------------- */
+//: Which tabs each role may use — the ONLY place the UI decides what to show.
+//: It mirrors the server's guards (`app/api/deps.py`): hiding a tab is
+//: convenience, a hand-made request is refused either way. Keeping the two in
+//: step is what stops an HR account from meeting a button that can only 403.
+const ROLE_TABS = {
+  admin: ['devices', 'levels', 'personnel', 'departments', 'scan', 'monitor', 'users'],
+  hr: ['levels', 'personnel', 'departments', 'monitor'],
+};
+const ROLE_LABEL = { admin: 'Admin', hr: 'HR' };
+
+let currentUser = null;
+
+function allowedTabs(role) {
+  // An unknown role gets the smaller set. If the server ever grows a third role,
+  // the dashboard shows too little rather than too much.
+  return ROLE_TABS[role] || ROLE_TABS.hr;
+}
+
+function applyRole(me) {
+  const allowed = allowedTabs(me.role);
+  document.querySelectorAll('.tab').forEach(tab => {
+    // Pengguna starts `hidden` in the markup and is only unhidden here, so no
+    // role can flash an admin-only tab on the way in.
+    tab.hidden = !allowed.includes(tab.dataset.tab);
+  });
+  $('#who').textContent =
+    `${me.full_name || me.username} \u2014 ${ROLE_LABEL[me.role] || me.role}`;
+  const warning = $('#default-pass-warning');
+  warning.hidden = !me.must_change_password;
+  if (me.must_change_password) {
+    warning.textContent = 'Password akun ini masih password default. Ganti lewat '
+      + 'tombol "Ganti password" \u2014 selama belum diganti, siapa pun yang tahu '
+      + 'password default bisa masuk sebagai Anda.';
+  }
+}
+
+function showLogin(message) {
+  currentUser = null;
+  stopMonitor();  // a feed from the previous session must not keep running
+  $('#app').hidden = true;
+  $('#login-overlay').hidden = false;
+  $('#login-pass').value = '';
+  say($('#login-msg'), message || '');
+  $('#login-user').focus();
+}
+
+function hideLogin() {
+  $('#login-overlay').hidden = true;
+  say($('#login-msg'), '');
+  $('#app').hidden = false;
+}
+
+async function fetchMe() {
+  const res = await fetch('/api/auth/me');
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function login() {
+  const username = $('#login-user').value.trim();
+  const password = $('#login-pass').value;
+  if (!username || !password) {
+    say($('#login-msg'), 'Isi nama pengguna dan password.', true);
+    return;
+  }
+  const button = $('#btn-login');
+  button.disabled = true;
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      say($('#login-msg'), payload && payload.detail ? payload.detail : 'Gagal masuk.', true);
+      return;
+    }
+    // Clear the password before anything else is drawn, so a failure inside
+    // startSession() cannot leave it sitting in the DOM.
+    $('#login-pass').value = '';
+    startSession(payload);
+  } catch (err) {
+    say($('#login-msg'), 'Tidak bisa menghubungi server: ' + err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+//: Everything that must happen once we know who is logged in. Shared by the login
+//: form and the boot path, so the two cannot drift apart.
+function startSession(me) {
+  currentUser = me;
+  applyRole(me);   // BEFORE unhiding: no flash of an admin-only tab for HR
+  hideLogin();
+  loadDevices();   // fills the shared device selects (push, open door, network)
+  loadLevels();
+  loadDepartments();
+  selectTab('personnel');
+}
+
+async function logout() {
+  try { await api('/api/auth/logout', 'POST'); } catch { /* sudah tidak berlaku */ }
+  // Drop what was cached for the previous session: the next person at this PC
+  // must never glimpse the last one's data before their own login lands.
+  allDevices = [];
+  allLevels = [];
+  allPersonnel = [];
+  currentLevel = null;
+  $('#u-body').innerHTML = '';
+  $('#login-user').value = '';  // a shared operator PC must not name the last user
+  say($('#user-msg'), '');
+  showLogin('Anda sudah keluar.');
+}
+
+async function changeOwnPassword() {
+  const values = await askForm({
+    title: 'Ganti password saya',
+    detail: 'Perangkat lain yang masih login dengan akun ini akan otomatis keluar. '
+      + 'Sesi di browser ini tetap jalan.',
+    fields: [
+      { name: 'current_password', label: 'Password sekarang', type: 'password' },
+      { name: 'new_password', label: 'Password baru', type: 'password' },
+      { name: 'repeat', label: 'Ulangi password baru', type: 'password' },
+    ],
+    confirmLabel: 'Ganti password',
+    validate: values => (values.new_password !== values.repeat
+      ? 'Ulangi password baru belum sama.' : null),
+  });
+  if (!values) return;
+  const msg = $('#user-msg');
+  const stopClock = sayBusy(msg, 'Mengganti password');
+  try {
+    const me = await api('/api/auth/password', 'POST', {
+      current_password: values.current_password,
+      new_password: values.new_password,
+    });
+    currentUser = me;
+    applyRole(me);  // clears the default-password warning banner
+    say(msg, 'Password sudah diganti. Perangkat lain sudah keluar.');
+  } catch (err) {
+    say(msg, 'Gagal ganti password: ' + err.message, true);
+  } finally {
+    stopClock();
+  }
+}
+
+$('#btn-login').addEventListener('click', login);
+$('#login-user').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
+$('#login-pass').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
+$('#btn-logout').addEventListener('click', logout);
+$('#btn-change-pass').addEventListener('click', changeOwnPassword);
+
+/* ------------------------------ tabs ------------------------------ */
+//: One switch, used by the buttons AND by the boot code below. The page opens on
+//: Personel, and a separate boot path would be free to drift from the click path
+//: (the highlighted tab and the visible panel disagreeing is the state where an
+//: operator types a card number into a form they believe is somebody else's).
+function selectTab(name) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => { p.hidden = true; });
+  $('#panel-' + name).hidden = false;
+  // One monitor feed per page, ever: leaving the tab stops it, so a browser left
+  // open on another tab is not quietly polling the database for hours.
+  if (name !== 'monitor') stopMonitor();
+  if (name === 'levels') loadLevels();
+  if (name === 'personnel') loadPersonnel();
+  if (name === 'departments') loadDepartments();
+  if (name === 'scan') loadScanHints();
+  if (name === 'monitor') loadMonitor();
+  if (name === 'users') loadUsers();
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => selectTab(tab.dataset.tab));
+});
+
+/* ----------------------------- devices ---------------------------- */
+let editingDeviceId = null;
+let allDevices = [];
+
+async function loadDevices() {
+  const msg = $('#dev-msg');
+  say(msg, 'Memuat...');
+  $('#btn-dev-refresh').disabled = true;
+  try {
+    const rows = await api('/api/dashboard/devices');
+    const details = await api('/api/devices');
+    const byIp = new Map(details.map(d => [d.ip, d]));
+
+    allDevices = details;
+    fillOpenDevices();
+    fillPushDevices();
+    fillNetworkDevices();
+
+    $('#dev-body').innerHTML = rows.map(r => {
+      const device = byIp.get(r.ip_address) || {};
+      return `
+      <tr>
+        <td>${esc(r.device_name)}</td>
+        <td>${esc(r.serial_number) || '-'}</td>
+        <td>${esc(r.ip_address)}</td>
+        <td class="num">${esc(r.personnel_count) || '-'}</td>
+        <td>${esc(r.firmware_version) || '-'}</td>
+        <td class="${r.status === 'online' ? 'on' : 'off'}">${esc(r.status)}</td>
+        <td>
+          <button class="tiny ghost" data-info="${device.id}">Info</button>
+          <button class="tiny ghost" data-edit="${device.id}">Edit</button>
+          <button class="tiny danger" data-delete="${device.id}"
+                  data-name="${esc(r.device_name)}">Hapus</button>
+        </td>
+      </tr>`;
+    }).join('')
+      || '<tr><td colspan="7" class="empty">Belum ada device. '
+        + 'Tambahkan lewat form di atas, atau impor devices_input.csv.</td></tr>';
+
+    $('#dev-body').querySelectorAll('button[data-edit]').forEach(button => {
+      const device = details.find(d => String(d.id) === button.dataset.edit);
+      button.addEventListener('click', () => startEditDevice(device));
+    });
+
+    $('#dev-body').querySelectorAll('button[data-delete]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const ok = await askConfirm({
+          title: `Hapus device "${button.dataset.name}"?`,
+          detail: 'Riwayat log dan keanggotaannya ikut terhapus.',
+          confirmLabel: 'Ya, hapus device',
+        });
+        if (!ok) return;
+        try {
+          await api(`/api/devices/${button.dataset.delete}`, 'DELETE');
+          await loadDevices();
+          await loadLevels();
+          say($('#dev-msg'), `Device "${button.dataset.name}" dihapus.`);
+        } catch (err) {
+          say($('#dev-msg'), 'Gagal menghapus: ' + err.message, true);
+        }
+      });
+    });
+
+    $('#dev-body').querySelectorAll('button[data-info]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const name = button.closest('tr').querySelector('td').textContent.trim();
+        button.disabled = true;
+        say(msg, `Membaca info ${name}...`);
+        try {
+          const info = await api(`/api/devices/${button.dataset.info}/info`, 'POST');
+          say(msg, `${name}: serial ${info.serial_number || '-'}, `
+            + `firmware ${info.firmware_version || '-'}, ${info.personnel_count ?? '-'} user`);
+          showDeviceNetwork(name, info);
+          await loadDevices();
+        } catch (err) {
+          say(msg, `${name}: ${err.message}`, true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+
+    const online = rows.filter(r => r.status === 'online').length;
+    if (!editingDeviceId) {
+      say(msg, rows.length ? `${online}/${rows.length} device online` : '');
+    }
+  } catch (err) {
+    say(msg, 'Gagal memuat: ' + err.message, true);
+  } finally {
+    $('#btn-dev-refresh').disabled = false;
+  }
+}
+
+//: A panel keeps its own IP, netmask, gateway and MAC, and they can drift from the
+//: address this database holds — a panel re-addressed at the keypad, or a record
+//: edited by mistake. Nothing else in the system would show it, so the two are put
+//: side by side and a difference is called out rather than left to be discovered.
+function showDeviceNetwork(name, info) {
+  const net = info.raw_parameters || {};
+  const panelIp = net.IPAddress || '';
+  const appIp = info.ip || '';
+  const drift = Boolean(panelIp && appIp && panelIp !== appIp);
+
+  const row = (label, panelValue, appValue, flag) => `
+    <tr>
+      <td>${esc(label)}</td>
+      <td class="${flag ? 'off' : ''}">${esc(panelValue || '-')}</td>
+      <td class="${flag ? 'off' : ''}">${esc(appValue || '-')}</td>
+    </tr>`;
+
+  $('#dev-detail').innerHTML = `
+    <div class="card" style="margin-top:1.25rem">
+      <h3>Jaringan panel &mdash; ${esc(name)}</h3>
+      <p class="hint">
+        ${drift
+          ? 'IP panel BEDA dengan IP yang dipakai aplikasi. Selama berbeda, aplikasi '
+            + 'menghubungi panel di alamat yang salah — perbaiki lewat Edit di barisnya.'
+          : 'IP panel sama dengan IP yang dipakai aplikasi.'}
+      </p>
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Nilai di panel</th><th>Dipakai aplikasi</th></tr>
+        </thead>
+        <tbody>
+          ${row('IP address', panelIp, appIp, drift)}
+          ${row('NetMask', net.NetMask, '', false)}
+          ${row('Gateway', net.GATEWAY, '', false)}
+          ${row('MAC', net.MAC, info.mac_address, false)}
+        </tbody>
+      </table>
+      <p class="hint">
+        Kolom tengah dibaca langsung dari panel. Aplikasi ini belum bisa mengubah
+        IP panel dari jauh: kalau alamatnya salah ditulis, panel itu tidak bisa
+        dijangkau lagi dan harus diperbaiki fisik di lokasinya. Untuk memindahkan
+        panel, ubah IP di panel lebih dulu, baru samakan kolom kanan lewat Edit.
+      </p>
+    </div>`;
+}
+
+function resetDeviceForm() {
+  editingDeviceId = null;
+  ['#d-name', '#d-ip', '#d-password', '#d-location', '#d-area'].forEach(sel => {
+    $(sel).value = '';
+  });
+  $('#d-port').value = '4370';
+  $('#dev-form-title').textContent = 'Tambah device';
+  $('#dev-form-hint').textContent =
+    'Daftarkan panel C3-100/200/300/400 baru. Default port 4370.';
+  $('#btn-d-save').textContent = 'Tambah';
+  $('#btn-d-cancel').hidden = true;
+}
+
+function startEditDevice(device) {
+  editingDeviceId = device.id;
+  $('#d-name').value = device.name || '';
+  $('#d-ip').value = device.ip || '';
+  $('#d-port').value = device.port || 4370;
+  $('#d-password').value = '';
+  $('#d-location').value = device.location || '';
+  $('#d-area').value = device.area || '';
+  $('#dev-form-title').textContent = `Edit device: ${device.name}`;
+  $('#dev-form-hint').textContent =
+    'Password dibiarkan kosong berarti tidak diubah.';
+  $('#btn-d-save').textContent = 'Simpan perubahan';
+  $('#btn-d-cancel').hidden = false;
+  $('#d-name').focus();
+}
+
+$('#btn-d-cancel').addEventListener('click', () => {
+  resetDeviceForm();
+  say($('#dev-form-msg'), 'Dibatalkan.');
+});
+
+$('#btn-d-save').addEventListener('click', async () => {
+  const msg = $('#dev-form-msg');
+  const name = $('#d-name').value.trim();
+  const ip = $('#d-ip').value.trim();
+  const port = Number($('#d-port').value || 4370);
+
+  if (!name || !ip) { say(msg, 'Nama dan IP wajib diisi.', true); return; }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    say(msg, 'Port harus 1-65535.', true);
+    return;
+  }
+
+  const payload = { name, ip, port };
+  const password = $('#d-password').value.trim();
+  const location = $('#d-location').value.trim();
+  const area = $('#d-area').value.trim();
+  if (password) payload.password = password;
+  payload.location = location || null;
+  payload.area = area || null;
+
+  $('#btn-d-save').disabled = true;
+  say(msg, 'Menyimpan...');
+  try {
+    if (editingDeviceId) {
+      await api(`/api/devices/${editingDeviceId}`, 'PATCH', payload);
+      say(msg, `Device "${name}" diperbarui.`);
+    } else {
+      await api('/api/devices', 'POST', payload);
+      say(msg, `Device "${name}" ditambahkan.`);
+    }
+    resetDeviceForm();
+    await loadDevices();
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    $('#btn-d-save').disabled = false;
+  }
+});
+
+$('#btn-dev-discover').addEventListener('click', async () => {
+  const box = $('#dev-discover-result');
+  const button = $('#btn-dev-discover');
+  button.disabled = true;
+  box.innerHTML = '<p class="msg">Mencari lewat broadcast... (beberapa detik)</p>';
+  try {
+    const found = await api('/api/devices/discover?timeout=3');
+    if (!found.length) {
+      box.innerHTML = '<p class="msg">Tidak ada device baru ditemukan. '
+        + 'Broadcast hanya jalan di subnet yang sama.</p>';
+      return;
+    }
+    box.innerHTML = '<p class="hint">Ditemukan ' + found.length + ' device. '
+      + 'Klik untuk mengisi form di atas.</p>'
+      + found.map(d => `<button class="tiny ghost" data-found="${esc(d.ip)}"
+            data-sn="${esc(d.serial_number || '')}">${esc(d.ip)}
+            ${d.serial_number ? '(' + esc(d.serial_number) + ')' : ''}
+            ${d.registered ? '- sudah terdaftar' : ''}</button> `).join('');
+
+    box.querySelectorAll('button[data-found]').forEach(item => {
+      item.addEventListener('click', () => {
+        $('#d-ip').value = item.dataset.found;
+        $('#d-name').value = $('#d-name').value || ('C3 ' + item.dataset.found);
+        say($('#dev-form-msg'), 'Klik Tambah untuk mendaftarkan device ini.');
+      });
+    });
+  } catch (err) {
+    box.innerHTML = `<p class="msg error">Gagal discover: ${esc(err.message)}</p>`;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#btn-dev-refresh').addEventListener('click', loadDevices);
+
+$('#btn-dev-info').addEventListener('click', async () => {
+  const msg = $('#dev-msg');
+  $('#btn-dev-info').disabled = true;
+  say(msg, 'Menghubungi semua panel... ini bisa memakan waktu.');
+  try {
+    const body = await api('/api/devices/sync/refresh', 'POST');
+    say(msg, `${body.succeeded}/${body.total_devices} device berhasil di-refresh`
+      + (body.failed ? `, ${body.failed} gagal` : ''));
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    $('#btn-dev-info').disabled = false;
+    await loadDevices();
+  }
+});
+
+function fillOpenDevices() {
+  const select = $('#o-device');
+  const keep = select.value;
+  select.innerHTML = '<option value="">(pilih device)</option>'
+    + allDevices.slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(d => `<option value="${d.id}" data-doors="${d.lock_count || 1}">`
+          + `${esc(d.name)} - ${esc(d.ip)}</option>`).join('');
+  select.value = keep && allDevices.some(d => String(d.id) === keep) ? keep : '';
+  fillOpenDoorNumbers();
+}
+
+function fillOpenDoorNumbers() {
+  const deviceSelect = $('#o-device');
+  const doorSelect = $('#o-door');
+  const option = deviceSelect.selectedOptions[0];
+  const total = deviceSelect.value ? Number(option?.dataset.doors || 1) || 1 : 0;
+  doorSelect.innerHTML = total
+    ? Array.from({ length: total }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')
+    : '<option value="">-</option>';
+}
+
+$('#o-device').addEventListener('change', fillOpenDoorNumbers);
+
+//: Opening a door moves a physical lock, so the click is confirmed and the
+//: operator is told which panel, which door and for how long. 15 seconds is the
+//: default: long enough to walk through, short enough not to be left standing
+//: open. The device is reached over the network, so it can legitimately fail —
+//: the API reports that in the payload rather than as an HTTP error.
+$('#btn-o-open').addEventListener('click', async () => {
+  const msg = $('#o-msg');
+  const deviceId = Number($('#o-device').value);
+  const doorNumber = Number($('#o-door').value);
+  const duration = Number($('#o-duration').value);
+  const device = allDevices.find(d => d.id === deviceId);
+
+  if (!device) { say(msg, 'Pilih device dulu.', true); return; }
+  if (!doorNumber) { say(msg, 'Pilih nomor pintu.', true); return; }
+  if (!Number.isInteger(duration) || duration < 1 || duration > 600) {
+    say(msg, 'Durasi harus 1-600 detik.', true);
+    return;
+  }
+
+  const ok = await askConfirm({
+    title: `Buka pintu ${doorNumber} di "${device.name}"?`,
+    detail: `${device.ip} - pintu akan terbuka selama ${duration} detik.\n`
+      + 'Pintu fisik benar-benar terbuka, pastikan sudah sesuai.',
+    confirmLabel: `Ya, buka ${duration} detik`,
+  });
+  if (!ok) {
+    // Leave no stale "berhasil dibuka" text behind: it would read as if a door
+    // had just opened when nothing was sent.
+    say(msg, 'Dibatalkan - pintu tidak dibuka.');
+    return;
+  }
+
+  $('#btn-o-open').disabled = true;
+  say(msg, `Mengirim perintah ke ${device.name}...`);
+  try {
+    const result = await api(`/api/control/devices/${deviceId}/open`, 'POST',
+                             { door_number: doorNumber, duration_seconds: duration });
+    say(msg, result.success
+      ? `Pintu ${doorNumber} di ${device.name} dibuka selama ${duration} detik.`
+      : `Gagal membuka ${device.name}: ${result.error}`,
+      !result.success);
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    $('#btn-o-open').disabled = false;
+  }
+});
+
+function fillPushDevices() {
+  const select = $('#s-device');
+  const keep = select.value;
+  select.innerHTML = '<option value="">(pilih device)</option>'
+    + allDevices.slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(d => `<option value="${d.id}">`
+          + `${esc(d.name)} - ${esc(d.ip)}</option>`).join('');
+  select.value = keep && allDevices.some(d => String(d.id) === keep) ? keep : '';
+}
+
+//: Writing personnel data decides who may open which door, so the payload size
+//: is always reported back and the real write is confirmed first. "Cek dulu"
+//: is a separate button because a dry run is the safe way to see how large a
+//: change would be before committing to it on a live panel.
+//:
+//: Shared by the Device tab and by the Access Level tab, where adding a door to a
+//: level means that panel now has to hold the level's members.
+async function pushPanel(deviceId, msg, options = {}) {
+  const {
+    dryRun = false,
+    buttons = [],
+    confirmTitle = null,
+    confirmDetail = null,
+    confirmLabel = 'Ya, kirim',
+  } = options;
+  const device = allDevices.find(d => d.id === deviceId);
+  if (!device) { say(msg, 'Pilih device dulu.', true); return null; }
+
+  if (!dryRun) {
+    const ok = await askConfirm({
+      title: confirmTitle || `Kirim data personel ke "${device.name}"?`,
+      detail: confirmDetail
+        || `${device.ip} - data personel dashboard akan ditulis ke panel ini, `
+          + 'sehingga mengubah siapa saja yang boleh membuka pintu di panel tersebut.',
+      confirmLabel,
+    });
+    if (!ok) { say(msg, 'Dibatalkan - tidak ada yang dikirim.'); return null; }
+  }
+
+  setButtonsBusy(buttons, true);
+  sayBusy(msg, `${dryRun ? 'Menghitung' : 'Mengirim'} untuk ${device.name}`);
+  try {
+    const result = await api(
+      `/api/devices/${deviceId}/personnel/sync?dry_run=${dryRun ? 'true' : 'false'}`,
+      'POST');
+    const d = result.device || {};
+    const skipped = (d.skipped || []).length;
+    const tail = result.written
+      ? `Ditulis: ${result.written.user} user, ${result.written.userauthorize} authorize.`
+      : 'Dry run - belum ada yang ditulis.';
+    const text = `${d.device_name || device.name}: ${d.users} user, ${d.authorize} authorize`
+      + (skipped ? `, ${skipped} dilewati` : '') + `. ${tail}`;
+    say(msg, text);
+    return { result, text };
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+    return null;
+  } finally {
+    setButtonsBusy(buttons, false);
+  }
+}
+
+async function runPush(deviceId, dryRun) {
+  return pushPanel(deviceId, $('#s-msg'), {
+    dryRun,
+    buttons: [$('#btn-s-dry'), $('#btn-s-push')],
+  });
+}
+
+$('#btn-s-dry').addEventListener('click', () => runPush(Number($('#s-device').value), true));
+$('#btn-s-push').addEventListener('click', () => runPush(Number($('#s-device').value), false));
+
+/* -------------------------- access levels ------------------------- */
+let currentLevel = null;
+let allLevels = [];
+
+async function loadLevels() {
+  const msg = $('#lvl-msg');
+  $('#btn-lvl-refresh').disabled = true;
+  try {
+    const rows = await api('/api/access-groups');
+    allLevels = rows;
+    $('#lvl-body').innerHTML = rows.map(g => `
+      <tr class="clickable" data-id="${g.id}">
+        <td>${esc(g.name)}</td>
+        <td class="num">${g.door_count}</td>
+        <td class="num">${g.member_count}</td>
+        <td>${g.time_zone_name
+              ? `<span class="pill${g.is_24_hour ? '' : ' none'}">${esc(g.time_zone_name)}</span>`
+              : `<span class="pill none">slot ${g.device_timezone_id} (belum didefinisikan)</span>`}</td>
+      </tr>`).join('')
+      || '<tr><td colspan="4" class="empty">Belum ada access level.</td></tr>';
+
+    $('#lvl-body').querySelectorAll('tr[data-id]').forEach(row => {
+      row.addEventListener('click', () => showLevel(Number(row.dataset.id)));
+    });
+
+    const members = rows.reduce((sum, g) => sum + g.member_count, 0);
+    const doors = rows.reduce((sum, g) => sum + g.door_count, 0);
+    say(msg, `${rows.length} level - ${doors} pintu - ${members} keanggotaan`);
+
+    // Access levels are a checkbox picker, not a single select: a person
+    // normally holds several (the migrated data averages ~4, up to 11).
+    const picker = $('#p-levels');
+    const keep = new Set(pickedLevelIds().map(String));
+    picker.innerHTML = rows.map(g => `
+      <label><input type="checkbox" value="${g.id}"${keep.has(String(g.id)) ? ' checked' : ''}>
+        ${esc(g.name)}</label>`).join('')
+      || '<p class="empty">Belum ada access level.</p>';
+    picker.querySelectorAll('input[type=checkbox]').forEach(box => {
+      box.addEventListener('change', refreshLevelCount);
+    });
+    refreshLevelCount();
+
+    // Jam akses for a brand-new level. "24 Jam" is the sane default: every
+    // migrated level uses it, and a level with an unintended limited schedule
+    // silently locks people out of doors they can reach today.
+    const zones = await api('/api/time-zones');
+    const zoneSelect = $('#l-tz');
+    const keepZone = zoneSelect.value;
+    zoneSelect.innerHTML = zones.map(z =>
+      `<option value="${z.device_timezone_id}">${esc(z.name)} (slot ${z.device_timezone_id})`
+      + `${z.is_24_hour ? ' - 24 jam' : ''}</option>`).join('');
+    if (keepZone && zones.some(z => String(z.device_timezone_id) === keepZone)) {
+      zoneSelect.value = keepZone;
+    } else {
+      const preferred = zones.find(z => z.is_24_hour) || zones[0];
+      if (preferred) zoneSelect.value = String(preferred.device_timezone_id);
+    }
+  } catch (err) {
+    say(msg, 'Gagal memuat: ' + err.message, true);
+  } finally {
+    $('#btn-lvl-refresh').disabled = false;
+  }
+}
+
+$('#btn-l-add').addEventListener('click', async () => {
+  const msg = $('#l-msg');
+  const name = $('#l-name').value.trim();
+  const description = $('#l-desc').value.trim();
+  const zone = $('#l-tz').value;
+
+  if (!name) { say(msg, 'Nama access level wajib diisi.', true); return; }
+
+  // Level names are unique in the database, so name the clashing level up front
+  // rather than bouncing off a 409 that only says "sudah ada".
+  const clash = allLevels.find(g => g.name.trim().toLowerCase() === name.toLowerCase());
+  if (clash) {
+    say(msg, `Access level "${clash.name}" sudah ada (id ${clash.id}). `
+      + 'Nama level harus unik.', true);
+    return;
+  }
+  if (!zone) { say(msg, 'Belum ada jam akses. Buat time zone dulu.', true); return; }
+
+  $('#btn-l-add').disabled = true;
+  say(msg, 'Menyimpan...');
+  try {
+    const created = await api('/api/access-groups', 'POST', {
+      name,
+      description: description || null,
+      device_timezone_id: Number(zone),
+    });
+    $('#l-name').value = '';
+    $('#l-desc').value = '';
+    await loadLevels();
+    await showLevel(created.id);
+    say($('#l-msg'), `Access level "${created.name}" dibuat. `
+      + 'Tambahkan pintu dan anggotanya di panel kanan.');
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    $('#btn-l-add').disabled = false;
+  }
+});
+
+function pickedLevelIds() {
+  return Array.from($('#p-levels').querySelectorAll('input:checked'))
+    .map(box => Number(box.value));
+}
+
+function refreshLevelCount() {
+  const picked = pickedLevelIds();
+  say($('#p-level-count'), picked.length
+    ? `${picked.length} level dipilih`
+    : '0 level dipilih - personel dibuat tanpa akses');
+}
+
+$('#btn-p-level-none').addEventListener('click', () => {
+  $('#p-levels').querySelectorAll('input:checked').forEach(box => { box.checked = false; });
+  refreshLevelCount();
+});
+
+function fillDoorNumbers() {
+  const deviceSel = $('#lvl-door-device');
+  const doorSel = $('#lvl-door-number');
+  if (!deviceSel || !doorSel) return;
+
+  const option = deviceSel.selectedOptions[0];
+  if (!deviceSel.value) {
+    doorSel.innerHTML = '<option value="">-</option>';
+    return;
+  }
+  const total = Number(option?.dataset.doors || 1) || 1;
+  let used = [];
+  try {
+    used = JSON.parse(option?.dataset.used || '[]');
+  } catch (e) {
+    used = [];
+  }
+
+  let html = '';
+  for (let n = 1; n <= total; n += 1) {
+    const already = used.includes(n);
+    html += `<option value="${n}"${already ? ' disabled' : ''}>${n}`
+      + `${already ? ' (sudah ditambahkan)' : ''}</option>`;
+  }
+  doorSel.innerHTML = html || '<option value="" disabled> semua pintu sudah ditambahkan </option>';
+}
+
+async function showLevel(id) {
+  const title = $('#lvl-title');
+  const hint = $('#lvl-hint');
+  currentLevel = id;
+  title.textContent = 'Memuat...';
+  $('#lvl-doors').innerHTML = '';
+  $('#lvl-members').innerHTML = '';
+
+  try {
+    const group = await api('/api/access-groups/' + id);
+    title.textContent = group.name;
+    hint.textContent = `${group.door_count} pintu - ${group.member_count} anggota`
+      + (group.description ? ` - ${group.description}` : '');
+
+    const zones = await api('/api/time-zones');
+    const zoneOptions = zones.map(z =>
+      `<option value="${z.id}"${z.device_timezone_id === group.device_timezone_id ? ' selected' : ''}>`
+      + `${esc(z.name)} (slot ${z.device_timezone_id})</option>`).join('');
+
+    const devices = await api('/api/devices');
+    const usedByDevice = {};
+    group.doors.forEach(d => {
+      usedByDevice[d.device_id] = usedByDevice[d.device_id] || [];
+      usedByDevice[d.device_id].push(d.door_number);
+    });
+    const deviceOptions = devices
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(d => `<option value="${d.id}" data-doors="${d.lock_count || 1}"`
+        + ` data-used="${JSON.stringify(usedByDevice[d.id] || [])}">`
+        + `${esc(d.name)} - ${esc(d.ip)}</option>`).join('');
+
+    $('#lvl-doors').innerHTML = `
+      <h4>Jam akses</h4>
+      <div class="form-row" style="margin-bottom:.6rem">
+        <div class="field">
+          <label for="lvl-tz">Time zone</label>
+          <select id="lvl-tz">${zoneOptions || '<option>belum ada time zone</option>'}</select>
+        </div>
+        <button class="ghost" id="btn-lvl-tz"${zones.length ? '' : ' disabled'}>Simpan</button>
+        <span class="msg" id="lvl-tz-msg">${group.time_zone_name
+          ? (group.is_24_hour ? 'Akses 24 jam' : 'jadwal terbatas')
+          : `slot ${group.device_timezone_id} belum didefinisikan`}</span>
+      </div>
+      <h4>Pintu</h4>
+      <div class="form-row" style="margin-bottom:.5rem">
+        <div class="field" style="min-width:15rem">
+          <label for="lvl-door-device">Tambah pintu &mdash; device</label>
+          <select id="lvl-door-device">
+            <option value="">(pilih device)</option>${deviceOptions}
+          </select>
+        </div>
+        <div class="field" style="min-width:8rem">
+          <label for="lvl-door-number">Pintu</label>
+          <select id="lvl-door-number"></select>
+        </div>
+        <button id="btn-lvl-door-add">Tambah</button>
+        <span class="msg" id="lvl-door-msg"></span>
+      </div>
+      <div class="scroll" style="max-height:22vh">
+        <table>
+          <thead><tr><th>Device</th><th>IP</th><th class="num">Pintu</th><th></th></tr></thead>
+          <tbody>${group.doors.map(d => `
+            <tr><td>${esc(d.device_name) || '-'}</td><td>${esc(d.device_ip) || '-'}</td>
+                <td class="num">${d.door_number}</td>
+                <td><button class="tiny danger" data-link="${d.id}"
+                            data-device="${esc(d.device_name)}"
+                            data-door="${d.door_number}">Hapus</button></td></tr>`).join('')
+            || '<tr><td colspan="4" class="empty">Belum ada pintu.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+
+    fillDoorNumbers();
+    $('#lvl-door-device').addEventListener('change', fillDoorNumbers);
+
+    $('#lvl-members').innerHTML = `
+      <h4>Anggota</h4>
+      <div style="margin-bottom:.6rem">
+        <div class="field" style="width:100%">
+          <label for="m-badges">
+            Tambah anggota &mdash; bisa banyak sekaligus (satu badge per baris, atau pisah dengan koma)
+          </label>
+          <textarea id="m-badges" rows="2" placeholder="202307056&#10;202306044, 202305027"></textarea>
+        </div>
+        <div class="form-row" style="margin-top:.4rem">
+          <button id="btn-m-add">Tambah ke level ini</button>
+          <span class="msg" id="m-msg"></span>
+        </div>
+      </div>
+      <div class="scroll" style="max-height:30vh">
+        <table>
+          <thead><tr><th>Badge</th><th>Nama</th><th>Departemen</th><th></th></tr></thead>
+          <tbody>${group.members.map(m => `
+            <tr>
+              <td>${esc(m.employee_id)}</td>
+              <td>${esc(m.name)}</td>
+              <td>${esc(m.department) || '-'}</td>
+              <td><button class="tiny danger" data-remove="${m.personnel_id}"
+                          data-name="${esc(m.name)}">Hapus</button></td>
+            </tr>`).join('')
+            || '<tr><td colspan="4" class="empty">Belum ada anggota.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+
+    $('#btn-lvl-tz').addEventListener('click', async () => {
+      const msg = $('#lvl-tz-msg');
+      const zoneId = $('#lvl-tz').value;
+      $('#btn-lvl-tz').disabled = true;
+      try {
+        await api(`/api/access-groups/${id}/time-zone`, 'PUT', { time_zone_id: Number(zoneId) });
+        await loadLevels();
+        await showLevel(id);
+        const fresh = $('#lvl-tz-msg');
+        if (fresh) say(fresh, 'Jam akses disimpan.');
+      } catch (err) {
+        say(msg, 'Gagal: ' + err.message, true);
+        $('#btn-lvl-tz').disabled = false;
+      }
+    });
+
+    $('#btn-lvl-door-add').addEventListener('click', async () => {
+      const msg = $('#lvl-door-msg');
+      const deviceId = Number($('#lvl-door-device').value);
+      const doorNumber = Number($('#lvl-door-number').value);
+      // Read before the card is re-rendered, which resets the picker to "(pilih device)".
+      const deviceLabel = ($('#lvl-door-device').selectedOptions[0] || {}).textContent || '';
+
+      if (!deviceId) { say(msg, 'Pilih device dulu.', true); return; }
+      if (!doorNumber) { say(msg, 'Semua pintu device ini sudah ada di level ini.', true); return; }
+
+      $('#btn-lvl-door-add').disabled = true;
+      say(msg, 'Menambahkan...');
+      try {
+        await api(`/api/access-groups/${id}/doors`, 'POST',
+                  { device_id: deviceId, door_number: doorNumber });
+        await showLevel(id);
+        await loadLevels();
+        const fresh = $('#lvl-door-msg');
+        if (!fresh) return;
+
+        const members = (group.members || []).length;
+        if (!members) {
+          say(fresh, `Pintu ${doorNumber} ditambahkan. Level ini belum punya anggota, `
+            + 'jadi belum ada yang perlu dikirim ke panel itu.');
+          return;
+        }
+        // A door on a level is a promise the panel has not heard yet: the members
+        // reach that door only once the panel itself is written to. Stopping here is
+        // how a level looks complete in the dashboard while the door stays shut.
+        say(fresh, `Pintu ${doorNumber} ditambahkan, tapi panel "${deviceLabel}" belum `
+          + `memuat ${members} anggota level ini.`, true);
+        await pushPanel(deviceId, fresh, {
+          buttons: [$('#btn-lvl-door-add')],
+          confirmTitle: `Kirim anggota "${group.name}" ke panel "${deviceLabel}"?`,
+          confirmDetail: `${members} anggota level ini belum dikirim ke panel itu, jadi pintu `
+            + 'barunya belum bisa mereka buka.\n'
+            + 'Data personel panel tersebut dihitung ulang (hanya yang berubah yang ditulis), '
+            + 'dan TIDAK ada hak yang dicabut.',
+          confirmLabel: 'Ya, kirim',
+        });
+      } catch (err) {
+        say($('#lvl-door-msg') || msg, 'Gagal: ' + err.message, true);
+        const button = $('#btn-lvl-door-add');
+        if (button) button.disabled = false;
+      }
+    });
+
+    $('#lvl-doors').querySelectorAll('button[data-link]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const ok = await askConfirm({
+          title: `Hapus pintu ${button.dataset.door} di device "${button.dataset.device}"?`,
+          detail: `Dilepas dari level ${group.name}.\n`
+            + 'Anggota level ini tetap terdaftar, hanya pintunya yang dilepas.',
+          confirmLabel: 'Ya, hapus pintu',
+        });
+        if (!ok) return;
+        try {
+          await api(`/api/access-groups/${id}/doors/${button.dataset.link}`, 'DELETE');
+          await showLevel(id);
+          await loadLevels();
+        } catch (err) {
+          // A native alert() is as undependable as confirm() here, and leaves no
+          // trace; the card's own message line always renders.
+          const target = $('#lvl-door-msg');
+          if (target) say(target, 'Gagal menghapus pintu: ' + err.message, true);
+        }
+      });
+    });
+
+    $('#btn-m-add').addEventListener('click', async () => {
+      const raw = $('#m-badges').value;
+      const badges = raw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+      const msg = $('#m-msg');
+
+      if (!badges.length) { say(msg, 'Isi minimal satu badge.', true); return; }
+      $('#btn-m-add').disabled = true;
+      say(msg, `Menambahkan ${badges.length} badge...`);
+      try {
+        const result = await api(`/api/access-groups/${id}/members`, 'POST',
+                                 { employee_ids: badges });
+        await showLevel(id);
+        await loadLevels();
+        const summary = `${result.added} ditambahkan`
+          + (result.skipped ? `, ${result.skipped} dilewati (tidak ada / sudah anggota)` : '');
+        const fresh = $('#m-msg');
+        if (!fresh) return;
+        if (!result.added) { say(fresh, summary, true); return; }
+
+        // Same gap as a new door, from the other side: membership is a dashboard
+        // fact until the panels are written to, and these people cannot open those
+        // doors yet.
+        say(fresh, `${summary}. PANEL BELUM DIUBAH.`, true);
+        const after = await api(`/api/access-groups/${id}`);
+        const wanted = new Set(badges);
+        const ids = (after.members || [])
+          .filter(member => wanted.has(member.employee_id))
+          .map(member => member.personnel_id);
+        if (!ids.length) return;
+
+        // Only this level's panels are in scope. Granting a level changes nothing on
+        // the panels of the person's *other* levels, and listing those as "tidak
+        // memuat orang ini" buries the panels the operator actually asked about.
+        const deviceIds = [...new Set((after.doors || []).map(door => door.device_id))];
+        if (!deviceIds.length) {
+          say(fresh, `${summary}. Level ${group.name} belum punya pintu, jadi belum ada `
+            + 'panel yang perlu dikirim.', true);
+          return;
+        }
+
+        const ok = await askConfirm({
+          title: `Kirim ${ids.length} anggota baru ke ${deviceIds.length} panel `
+            + `level ${group.name}?`,
+          detail: `${ids.length} orang baru ditambahkan ke ${group.name}, dan `
+            + `${deviceIds.length} panel milik level ini belum memuat mereka.\n`
+            + 'Hanya orang-orang ini yang dikirim, dan hanya ke panel level ini; '
+            + 'pengguna lain di panel tidak diubah.',
+          confirmLabel: 'Ya, kirim',
+        });
+        if (!ok) { say(fresh, `${summary}. Dibatalkan - panel belum diubah.`, true); return; }
+        await pushEverywhere(ids, `${ids.length} anggota baru`, fresh, {
+          deviceIds,
+          scope: `${deviceIds.length} panel level ${group.name}`,
+          detail: `Baru ditambahkan ke ${group.name}. Tiap panel level ini muncul di daftar `
+            + 'begitu selesai diperiksa.',
+        });
+      } catch (err) {
+        say($('#m-msg') || msg, err.message, true);
+        const button = $('#btn-m-add');
+        if (button) button.disabled = false;
+      }
+    });
+
+    $('#lvl-members').querySelectorAll('button[data-remove]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const personId = Number(button.dataset.remove);
+        const personName = button.dataset.name;
+        const ok = await askConfirm({
+          title: `Hapus ${personName} dari level ${group.name}?`,
+          detail: 'Personelnya tetap ada, hanya keanggotaan di level ini yang dilepas.',
+          confirmLabel: 'Ya, hapus anggota',
+        });
+        if (!ok) return;
+        try {
+          await api(`/api/access-groups/${id}/members/${personId}`, 'DELETE');
+          await showLevel(id);
+          await loadLevels();
+          const fresh = $('#m-msg');
+          if (!fresh) return;
+          // Leaving a level only changes the dashboard. The panel still holds the
+          // grant it was last written with, so the door keeps opening for somebody
+          // who no longer belongs there — and the sweep has to walk EVERY panel,
+          // because that stale grant can be on any of them.
+          say(fresh, `${personName} dilepas dari ${group.name}. PANEL BELUM DIUBAH - haknya `
+            + 'di panel masih aktif.', true);
+          const send = await askConfirm({
+            title: `Cabut hak ${personName} dari panel?`,
+            detail: `${personName} sudah tidak lagi di ${group.name}, tapi panel masih `
+              + 'memegang hak lamanya sehingga pintunya masih bisa dibuka.\n'
+              + 'Semua panel diperiksa supaya hak lama di mana pun ikut dicabut; '
+              + 'pengguna lain di panel tidak diubah.',
+            confirmLabel: 'Ya, cabut',
+          });
+          if (!send) {
+            say(fresh, `${personName} dilepas dari ${group.name}. Dibatalkan - panel belum `
+              + 'diubah, haknya masih aktif.', true);
+            return;
+          }
+          await pushEverywhere([personId], personName, fresh, {
+            detail: 'Hak yang tidak lagi dia punya dicabut dari panel mana pun.',
+          });
+        } catch (err) {
+          const target = $('#m-msg');
+          if (target) say(target, 'Gagal menghapus: ' + err.message, true);
+        }
+      });
+    });
+  } catch (err) {
+    title.textContent = 'Gagal memuat';
+    hint.textContent = err.message;
+  }
+}
+
+$('#btn-lvl-refresh').addEventListener('click', async () => {
+  await loadLevels();
+  if (currentLevel) await showLevel(currentLevel);
+});
+
+/* --------------------------- personnel ---------------------------- */
+//: Cached copy of the personnel list, used to warn about a duplicate badge or
+//: card before the request is even sent.
+let allPersonnel = [];
+let editingPersonnelId = null;
+
+const P_FORM_HINT =
+  'Isi data orang, centang access level-nya (boleh lebih dari satu), lalu '
+  + 'simpan. Badge / PIN dan nomor kartu tidak boleh sama dengan personel lain.';
+
+async function loadPersonnel() {
+  const msg = $('#p-list-msg');
+  $('#btn-p-refresh').disabled = true;
+  say(msg, 'Memuat...');
+  try {
+    const rows = await api('/api/personnel');
+    allPersonnel = rows;
+    $('#p-body').innerHTML = rows.map(p => `
+      <tr>
+        <td>${esc(p.employee_id)}</td>
+        <td>${esc(p.name)}</td>
+        <td>${esc(p.card_number) || '-'}</td>
+        <td>${esc(p.department) || '-'}</td>
+        <td>${levelPills(p.access_group_names)}</td>
+        <td><button class="tiny ghost" data-edit="${p.id}">Edit</button></td>
+      </tr>`).join('')
+      || '<tr><td colspan="6" class="empty">Belum ada personel.</td></tr>';
+
+    $('#p-body').querySelectorAll('button[data-edit]').forEach(button => {
+      const person = allPersonnel.find(p => String(p.id) === button.dataset.edit);
+      button.addEventListener('click', () => startEditPersonnel(person));
+    });
+
+    // The table was just rebuilt from scratch, so whatever the operator had typed
+    // has to be applied again. Without this the box still reads "tes" while all
+    // 531 rows are on screen, and the next search appends to that leftover text.
+    applyPersonnelFilter();
+
+    if (!editingPersonnelId) say(msg, `${rows.length} personel`);
+  } catch (err) {
+    say(msg, 'Gagal memuat: ' + err.message, true);
+  } finally {
+    $('#btn-p-refresh').disabled = false;
+  }
+}
+
+$('#btn-p-refresh').addEventListener('click', loadPersonnel);
+
+function applyPersonnelFilter() {
+  const needle = $('#p-search').value.trim().toLowerCase();
+  $('#p-body').querySelectorAll('tr').forEach(row => {
+    row.style.display = !needle || row.textContent.toLowerCase().includes(needle) ? '' : 'none';
+  });
+}
+
+//: Clicking into the box selects whatever is left over from the previous search, so
+//: typing REPLACES it. Appending was the trap: after editing somebody, typing the
+//: next name into a box that still held the last one searched for "tesbudi" and
+//: matched nothing, which reads exactly like "search is broken now".
+$('#p-search').addEventListener('focus', event => event.target.select());
+$('#p-search').addEventListener('input', applyPersonnelFilter);
+
+//: A card or badge already in use must never be issued twice — two people
+//: sharing one card would both open the same doors. `excludeId` lets a person
+//: keep the badge and card they already have while being edited.
+function findDuplicate(employeeId, cardNumber, excludeId = null) {
+  const badge = employeeId.trim();
+  const card = (cardNumber || '').trim();
+  const others = allPersonnel.filter(p => p.id !== excludeId);
+
+  const byBadge = others.find(p => (p.employee_id || '').trim() === badge);
+  if (byBadge) return { label: 'Badge / PIN', value: badge, owner: byBadge };
+
+  if (!card) return null;
+  const byCard = others.find(p => (p.card_number || '').trim() === card);
+  return byCard ? { label: 'No. kartu', value: card, owner: byCard } : null;
+}
+
+function resetPersonnelForm() {
+  editingPersonnelId = null;
+  ['#p-badge', '#p-name', '#p-card', '#p-dept'].forEach(sel => { $(sel).value = ''; });
+  $('#p-levels').querySelectorAll('input:checked').forEach(box => { box.checked = false; });
+  refreshLevelCount();
+  $('#p-form-title').textContent = 'Tambah personel';
+  $('#p-form-hint').textContent = P_FORM_HINT;
+  $('#btn-p-save').textContent = 'Tambah';
+  $('#btn-p-cancel').hidden = true;
+  $('#btn-p-push').hidden = true;
+  // Back to the safe default: forgetting to sync leaves a panel holding rights
+  // that were taken away, which nobody notices until a door opens for the wrong
+  // person. Having to untick it again is the cheaper mistake.
+  $('#p-sync-auto').checked = true;
+}
+
+async function startEditPersonnel(person) {
+  // The form is shared between "add" and "edit", so its target lives in a
+  // variable, not in the DOM. Switching that target by an accidental click
+  // would silently send the next save to somebody else's record — refuse to
+  // retarget without an explicit yes.
+  if (editingPersonnelId && editingPersonnelId !== person.id) {
+    const current = allPersonnel.find(p => p.id === editingPersonnelId);
+    const who = current ? `${current.name} (${current.employee_id})` : 'personel lain';
+    const ok = await askConfirm({
+      title: `Ganti ke ${person.name} (${person.employee_id})?`,
+      detail: `Masih mengedit ${who}.\nPerubahan yang belum disimpan akan hilang.`,
+      confirmLabel: 'Ya, ganti target',
+    });
+    if (!ok) return;
+  }
+
+  editingPersonnelId = person.id;
+  $('#p-badge').value = person.employee_id || '';
+  $('#p-name').value = person.name || '';
+  $('#p-card').value = person.card_number || '';
+  $('#p-dept').value = person.department_id ? String(person.department_id) : '';
+
+  // Tick exactly the levels the person holds, and nothing else.
+  const held = new Set((person.access_group_ids || []).map(String));
+  $('#p-levels').querySelectorAll('input[type=checkbox]').forEach(box => {
+    box.checked = held.has(box.value);
+  });
+  refreshLevelCount();
+
+  $('#p-form-title').textContent = `Edit: ${person.name}`;
+  $('#p-form-hint').textContent =
+    `Mengubah ${person.employee_id}. Kosongkan nomor kartu untuk melepasnya.`;
+  $('#btn-p-save').textContent = 'Simpan perubahan';
+  $('#btn-p-cancel').hidden = false;
+  // Only meaningful for a saved person: pushing needs an id, and a form that has
+  // not been saved yet has nothing to send.
+  $('#btn-p-push').hidden = false;
+
+  // Deliberately an instant scroll: an animated one keeps moving after the
+  // click begins, and a click aimed at a field can then land on a table row
+  // instead — which would retarget the very edit this guards against.
+  const card = document.querySelector('#panel-personnel .card');
+  if (card) card.scrollIntoView({ block: 'center' });
+  $('#p-name').focus();
+}
+
+$('#btn-p-cancel').addEventListener('click', () => {
+  resetPersonnelForm();
+  say($('#p-msg'), 'Dibatalkan.');
+});
+
+//: Both the "Samakan ke semua panel" button and the automatic sync that follows a
+//: save end up here, so the operator gets one identical story either way: a moving
+//: indicator while the panels are written, and an explicit outcome at the end.
+//: A push walks up to 23 panels and each one can fail on its own, so "selesai" is
+//: never claimed for the ones that failed — a panel that errored still holds the
+//: OLD rights, and somebody would be standing in front of a door that will not open.
+function pushOutcome(label, result) {
+  // The service already names the panel it failed on; adding it again read as
+  // "Ranap 2 (Ranap 2 (10.100.1.22) ...)".
+  const failed = (result.results || []).filter(row => !row.ok)
+    .map(row => (row.error || '').includes(row.device_name)
+      ? row.error
+      : `${row.device_name}: ${row.error}`);
+  if (failed.length) {
+    const done = result.succeeded === undefined
+      ? result.device_count - failed.length
+      : result.succeeded;
+    return {
+      isError: true,
+      text: `${label}: ${done} panel selesai, ${failed.length} GAGAL - `
+        + `${failed.join('; ')}. Panel yang gagal MASIH memakai data lama; `
+        + 'klik "Samakan ke semua panel" untuk mengulanginya.',
+    };
+  }
+  if (!result.covered_count) {
+    // Not a failure: somebody with no access level reaches no door. The sweep
+    // still runs, and that is exactly what clears out rights they used to hold.
+    return {
+      isError: true,
+      text: `${label} tidak punya access level, jadi tidak ada panel yang `
+        + 'seharusnya memuatnya. Hak lamanya di panel sudah dibersihkan.',
+    };
+  }
+  const changes = [];
+  if (result.written_authorize) changes.push(`${result.written_authorize} hak ditulis`);
+  if (result.deleted_authorize) changes.push(`${result.deleted_authorize} hak dicabut`);
+  return {
+    isError: false,
+    text: `${label}: SELESAI - ${result.covered_count} panel memuatnya, `
+      + `${result.device_count} panel diperiksa - `
+      + (changes.length ? changes.join(', ') : 'tidak ada perubahan') + '.',
+  };
+}
+
+//: A sweep walks 23 panels and takes long enough that a bare spinner leaves the
+//: operator unable to tell progress from a hang — and unable to say which panels
+//: are already written. So the sweep reports itself here, one line per panel, and
+//: the inline message keeps the same result afterwards for the record.
+function showPushProgress(title, detail) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>${esc(title)}</h3>
+      <p class="hint">${esc(detail)}</p>
+      <div class="bar" style="margin:0 0 .4rem">
+        <span class="msg push-count">0 panel diperiksa</span>
+      </div>
+      <div class="push-log"></div>
+      <p class="msg push-status"></p>
+      <div class="form-row">
+        <button class="ghost push-close" disabled>Tutup</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const log = overlay.querySelector('.push-log');
+  const count = overlay.querySelector('.push-count');
+  const status = overlay.querySelector('.push-status');
+  const close = overlay.querySelector('.push-close');
+  close.addEventListener('click', () => overlay.remove());
+  const stopClock = sayBusy(status, 'Memeriksa panel');
+  let checked = 0;
+
+  return {
+    //: One line per panel, in the order the sweep reaches them, so the list reads
+    //: as "these are done" and grows while the operator watches.
+    panel(event) {
+      checked++;
+      count.textContent = `${checked} panel diperiksa`;
+      const { cls, text } = panelLine(event);
+      const line = document.createElement('div');
+      line.className = cls;
+      line.textContent = text;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    },
+    //: Nothing may be reported as delivered when the request itself failed, and
+    //: the panels that were mid-write are named in the log above.
+    finish(text, isError) {
+      stopClock();
+      count.textContent = `${checked} panel diperiksa`;
+      say(status, text, isError);
+      close.disabled = false;
+      close.focus();
+    },
+    fail(text) {
+      stopClock();
+      say(status, text, true);
+      close.disabled = false;
+      close.focus();
+    },
+  };
+}
+
+//: One line per panel: did it end up holding this person, and what changed.
+function panelLine(event) {
+  const name = event.device_name || `device ${event.device_id}`;
+  if (!event.ok) {
+    // The service already names the panel it failed on; adding it again read as
+    // "Ranap 2 (Ranap 2 (10.100.1.22) ...)".
+    const error = (event.error || '').includes(name)
+      ? event.error
+      : `${name}: ${event.error}`;
+    return { cls: 'bad', text: `✖ ${error}` };
+  }
+  const written = event.written || {};
+  const deleted = event.deleted || {};
+  const changes = [];
+  if (written.user) changes.push(`${written.user} user ditulis`);
+  if (written.userauthorize) changes.push(`${written.userauthorize} hak ditulis`);
+  if (deleted.userauthorize) changes.push(`${deleted.userauthorize} hak lama dicabut`);
+  if (event.covered) {
+    return {
+      cls: 'ok',
+      text: `✔ ${name} - SELESAI, ${changes.length ? changes.join(', ') : 'sudah sesuai'}`,
+    };
+  }
+  if (changes.length) {
+    return { cls: 'ok', text: `✔ ${name} - SELESAI, ${changes.join(', ')}` };
+  }
+  return { cls: 'skip', text: `- ${name} - tidak memuat orang ini` };
+}
+
+//: The sweep is read as it is written: one JSON line per panel, then the summary.
+//: Chunk boundaries fall wherever the network puts them, so a partial line is held
+//: back until its newline arrives.
+async function readPushStream(response, progress) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const panels = [];
+  let summary = null;
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf('\n');
+      if (!line) continue;
+      const event = JSON.parse(line);
+      if (event.type === 'summary') {
+        summary = event;
+      } else {
+        panels.push(event);
+        progress.panel(event);
+      }
+    }
+  }
+  return { panels, summary };
+}
+
+async function responseError(response) {
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  const detail = payload && payload.detail ? payload.detail : `HTTP ${response.status}`;
+  return typeof detail === 'string' ? detail : JSON.stringify(detail);
+}
+
+//: Adding somebody to an access level grants every door in that level, and one
+//: level can span twenty panels. A per-panel push refreshes only the panel in
+//: front of you and leaves the rest stale, so this writes those people to every
+//: panel their levels reach. Only the named people are sent — the hundreds of
+//: other users already on each panel are never rewritten.
+//:
+//: One runner for every fleet write: the button, the sweep that follows a save, and
+//: granting a level to new members. All of them have to report the same way.
+async function pushEverywhere(ids, label, msg, options = {}) {
+  const {
+    busyText = null,
+    detail = '',
+    deviceIds = null,
+    scope = 'semua panel',
+  } = options;
+  const progress = showPushProgress(
+    `Mengirim ${label} ke ${scope}`,
+    detail || 'Tiap panel muncul di daftar begitu selesai diperiksa; panel yang belum '
+      + 'muncul belum ditulis.');
+  sayBusy(msg, busyText || `Mengirim ${label} ke ${scope} - jangan tutup halaman ini`);
+  const narrowing = deviceIds && deviceIds.length ? `&device_ids=${deviceIds.join(',')}` : '';
+  try {
+    const response = await fetch(
+      `/api/personnel/sync?personnel_ids=${ids.join(',')}${narrowing}&stream=true`,
+      { method: 'POST' });
+    if (!response.ok) throw new Error(await responseError(response));
+
+    const { panels, summary } = await readPushStream(response, progress);
+    if (!summary) throw new Error('server tidak mengirim ringkasan hasil');
+    const outcome = pushOutcome(label, { ...summary, results: panels });
+    progress.finish(outcome.text, outcome.isError);
+    say(msg, outcome.text, outcome.isError);
+    return outcome;
+  } catch (err) {
+    // Nothing came back, so nothing may be reported as delivered.
+    const text = `Gagal mengirim ${label}: ${err.message}. Panel BELUM diubah.`;
+    progress.fail(text);
+    say(msg, text, true);
+    return { isError: true, text: err.message };
+  }
+}
+
+function pushPersonEverywhere(person, msg, busyText) {
+  return pushEverywhere([person.id], person.name, msg, {
+    busyText,
+    detail: `Badge ${person.employee_id || '-'}. Tiap panel muncul di daftar begitu selesai `
+      + 'diperiksa; panel yang belum muncul belum ditulis.',
+  });
+}
+
+$('#btn-p-push').addEventListener('click', async () => {
+  const msg = $('#p-msg');
+  const person = allPersonnel.find(p => p.id === editingPersonnelId);
+  if (!person) { say(msg, 'Pilih personel dulu (klik Edit di barisnya).', true); return; }
+
+  const ok = await askConfirm({
+    title: `Samakan akses ${person.name} di semua panel?`,
+    detail: 'Data orang ini disamakan di seluruh panel: yang belum ada ditulis, dan '
+      + 'hak akses yang tidak lagi dia punya akan DICABUT. Pengguna lain di panel '
+      + 'tersebut tidak diubah.',
+    confirmLabel: 'Ya, samakan',
+  });
+  if (!ok) { say(msg, 'Dibatalkan - tidak ada yang dikirim.'); return; }
+
+  const buttons = [$('#btn-p-save'), $('#btn-p-push')];
+  setButtonsBusy(buttons, true);
+  try {
+    await pushPersonEverywhere(person, msg);
+  } finally {
+    setButtonsBusy(buttons, false);
+  }
+});
+
+$('#btn-p-save').addEventListener('click', async () => {
+  const msg = $('#p-msg');
+  const badge = $('#p-badge').value.trim();
+  const name = $('#p-name').value.trim();
+  const card = $('#p-card').value.trim();
+  const deptId = $('#p-dept').value;
+  const levelIds = pickedLevelIds();
+  const editing = editingPersonnelId;
+
+  if (!badge || !name) { say(msg, 'Badge dan nama wajib diisi.', true); return; }
+
+  const dup = findDuplicate(badge, card, editing);
+  if (dup) {
+    say(msg, `${dup.label} ${dup.value} sudah dipakai ${dup.owner.name}`
+      + ` (badge ${dup.owner.employee_id}). Kartu tidak boleh dobel.`, true);
+    return;
+  }
+
+  const payload = {
+    employee_id: badge,
+    name,
+    // The picker shows the complete set, so the server can replace it outright.
+    access_group_ids: levelIds,
+    department_id: deptId ? Number(deptId) : null,
+  };
+  if (card) {
+    payload.card_number = card;
+  } else if (editing) {
+    payload.card_number = null;  // an emptied field means "this person has no card"
+  }
+  if (!deptId && editing) payload.clear_department = true;
+
+  // Syncing is part of the save by default: a panel that still holds the old
+  // rights is the single most confusing state this system can be in, and it is
+  // invisible from the dashboard. It stays a checkbox rather than being implicit
+  // because the write reaches the hardware — uncheck it when the change must not
+  // go out yet.
+  const syncAfter = $('#p-sync-auto').checked;
+  const buttons = [$('#btn-p-save'), $('#btn-p-push')];
+  setButtonsBusy(buttons, true);
+  sayBusy(msg, 'Menyimpan...');
+  try {
+    const person = editing
+      ? await api(`/api/personnel/${editing}`, 'PATCH', payload)
+      : await api('/api/personnel', 'POST', payload);
+    const groups = person.access_group_names || [];
+
+    resetPersonnelForm();
+    await loadPersonnel();
+    await loadLevels();
+
+    const saved = `${person.name} ${editing ? 'diperbarui' : 'ditambahkan'}`
+      + (groups.length ? ` - ${groups.length} access level: ${groups.join(', ')}`
+                       : ' (tanpa access level)');
+    if (!syncAfter) {
+      say(msg, `${saved}. PANEL BELUM DIUBAH - klik "Samakan ke semua panel" `
+        + 'pada orang ini kalau sudah yakin.', true);
+      return;
+    }
+    // The save is committed at this point; the panels are the second half and
+    // must never be reported as if the save itself had failed.
+    await pushPersonEverywhere(
+      person, msg,
+      `${person.name} tersimpan. Mengirim ke semua panel - jangan tutup halaman ini`);
+  } catch (err) {
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    setButtonsBusy(buttons, false);
+  }
+});
+
+/* --------------------------- departments -------------------------- */
+async function loadDepartments() {
+  const msg = $('#dept-msg');
+  $('#btn-dept-refresh').disabled = true;
+  try {
+    const rows = await api('/api/departments');
+    const byId = new Map(rows.map(d => [d.id, d.name]));
+
+    $('#dept-body').innerHTML = rows.map(d => `
+      <tr>
+        <td>${esc(d.name)}</td>
+        <td>${esc(byId.get(d.parent_id)) || '(root)'}</td>
+        <td class="num">${d.personnel_count}</td>
+      </tr>`).join('')
+      || '<tr><td colspan="3" class="empty">Belum ada departemen.</td></tr>';
+
+    const people = rows.reduce((sum, d) => sum + d.personnel_count, 0);
+    const roots = rows.filter(d => !d.parent_id).length;
+    say(msg, `${rows.length} departemen - ${roots} root - ${people} personel`);
+
+    const select = $('#p-dept');
+    const previous = select.value;
+    select.innerHTML = '<option value="">(belum ada)</option>'
+      + rows.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+    select.value = previous;
+
+    // Dropdown "Induk" di form tambah departemen: daftar yang sama, plus opsi tingkat
+    // atas. Pilihan yang sedang dipilih dipertahankan agar tidak ter-reset saat refresh.
+    const parentSelect = $('#dep-parent');
+    const previousParent = parentSelect.value;
+    parentSelect.innerHTML = '<option value="">(tingkat atas)</option>'
+      + rows.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+    parentSelect.value = previousParent;
+  } catch (err) {
+    say(msg, 'Gagal memuat: ' + err.message, true);
+  } finally {
+    $('#btn-dept-refresh').disabled = false;
+  }
+}
+
+$('#btn-dept-refresh').addEventListener('click', loadDepartments);
+
+$('#btn-dep-add').addEventListener('click', async () => {
+  const msg = $('#dep-form-msg');
+  const name = $('#dep-name').value.trim();
+  if (!name) { say(msg, 'Nama departemen wajib diisi.', true); return; }
+
+  const payload = { name };
+  const parentId = $('#dep-parent').value;
+  if (parentId) payload.parent_id = Number(parentId);
+  const code = $('#dep-code').value.trim();
+  if (code) payload.code = code;
+  const description = $('#dep-desc').value.trim();
+  if (description) payload.description = description;
+
+  $('#btn-dep-add').disabled = true;
+  say(msg, 'Menyimpan...');
+  try {
+    const created = await api('/api/departments', 'POST', payload);
+    say(msg, `Departemen "${created.name}" ditambahkan.`);
+    $('#dep-name').value = '';
+    $('#dep-code').value = '';
+    $('#dep-desc').value = '';
+    // Induk dibiarkan: sering beberapa departemen sekaligus dibuat di bawah induk yang sama.
+    await loadDepartments();
+  } catch (err) {
+    // 409 = nama sudah dipakai; pesan dari server sudah menyebut namanya.
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    $('#btn-dep-add').disabled = false;
+  }
+});
+
+$('#dept-search').addEventListener('input', event => {
+  const needle = event.target.value.trim().toLowerCase();
+  $('#dept-body').querySelectorAll('tr').forEach(row => {
+    row.style.display = !needle || row.textContent.toLowerCase().includes(needle) ? '' : 'none';
+  });
+});
+
+/* ------------------------ cari device (scan) ---------------------- */
+let scanRows = [];
+
+//: Satu baris JSON per batch progres, per device yang ditemukan, lalu ringkasan.
+//: Batas chunk TCP jatuh di mana saja, jadi baris yang belum utuh ditahan dulu.
+async function readScanStream(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let summary = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf('\n');
+      if (!line) continue;
+      const event = JSON.parse(line);
+      if (event.type === 'summary') summary = event; else onEvent(event);
+    }
+  }
+  return summary;
+}
+
+//: Alamat lokal yang dipakai server untuk tiap subnet yang diizinkan. Alamat kosong
+//: berarti server tidak punya rute ke subnet itu — hasil scan yang kosong lalu bukan
+//: tanda panelnya mati, dan itu harus terlihat SEBELUM operator menyimpulkan apa pun.
+async function loadScanHints() {
+  try {
+    const nets = await api('/api/scan/local-networks');
+    if (!nets.length) { say($('#sc-progress'), ''); return; }
+    say($('#sc-progress'), nets.map(n => n.local_address
+      ? `${n.range} lewat ${n.local_address}`
+      : `${n.range}: TIDAK ADA RUTE dari server ini`).join(' | '));
+  } catch (err) {
+    say($('#sc-progress'), 'Gagal membaca rute: ' + err.message, true);
+  }
+}
+
+function renderScanRows() {
+  $('#sc-body').innerHTML = scanRows.map(hit => {
+    // A registered panel answering at a DIFFERENT address means this database holds
+    // a stale IP — health checks, pushes and door control would all dial that old
+    // host. Nothing else in the system can see this, so it is called out here.
+    const moved = Boolean(hit.registered && hit.device_ip && hit.device_ip !== hit.ip);
+    const status = hit.registered
+      ? (moved
+        ? `sudah terdaftar, tapi dashboard menyimpan ${esc(hit.device_ip)}`
+        : 'sudah terdaftar')
+      : (hit.error ? esc(hit.error) : 'belum terdaftar');
+    const bad = moved || (!hit.registered && Boolean(hit.error));
+    //: What the panel says its own address is. Read-only — nothing here writes it.
+    const panelMismatch = Boolean(hit.panel_ip && hit.panel_ip !== hit.ip);
+    const action = hit.registered
+      ? (moved
+        ? `<button class="tiny ghost" data-fixip="${hit.device_id}" data-ip="${esc(hit.ip)}"
+                   data-old="${esc(hit.device_ip)}">Perbaiki IP di dashboard</button>`
+        : '')
+      : `<button class="tiny ghost" data-add="${esc(hit.ip)}"
+                 data-name="${esc(hit.device_name || ('C3 ' + hit.ip))}">Tambah</button>`;
+    return `
+      <tr>
+        <td>${esc(hit.ip)}</td>
+        <td title="netmask ${esc(hit.panel_netmask) || '-'} · gateway ${esc(hit.panel_gateway) || '-'}">
+          ${esc(hit.panel_ip) || '-'}
+          ${panelMismatch ? '<span class="off">(beda)</span>' : ''}</td>
+        <td>${esc(hit.serial_number) || '-'}</td>
+        <td>${esc(hit.device_name) || '-'}</td>
+        <td>${esc(hit.firmware_version) || '-'}</td>
+        <td class="num">${hit.lock_count ?? '-'}</td>
+        <td class="${bad ? 'off' : (hit.registered ? 'on' : '')}">${status}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join('')
+    || '<tr><td colspan="8" class="empty">Tidak ada panel ditemukan di rentang itu.</td></tr>';
+
+  bindScanActions();
+}
+
+function bindScanActions() {
+  const body = $('#sc-body');
+
+  body.querySelectorAll('button[data-add]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const name = button.dataset.name;
+      const ip = button.dataset.add;
+      button.disabled = true;
+      try {
+        const created = await api('/api/devices', 'POST', {
+          name,
+          ip,
+          port: Number($('#sc-port').value || 4370),
+          location: $('#sc-location').value.trim() || null,
+          area: $('#sc-area').value.trim() || null,
+        });
+        // Mendaftarkan device hanya menulis database. Mengatakan ini secara eksplisit
+        // penting: di tab lain, menyimpan memang ikut menulis ke panel.
+        scanRows = scanRows.map(row => (row.ip === ip
+          ? { ...row, registered: true, device_id: created.id, device_ip: created.ip } : row));
+        renderScanRows();
+        await loadDevices();
+        say($('#sc-msg'), `Device "${name}" didaftarkan di ${ip}. `
+          + 'PANEL BELUM DIUBAH - data personel dikirim nanti lewat tab Device.');
+      } catch (err) {
+        say($('#sc-msg'), 'Gagal menambah: ' + err.message, true);
+        button.disabled = false;
+      }
+    });
+  });
+
+  //: A panel that answers at another address is one somebody moved or re-addressed
+  //: at the keypad. The fix here changes the RECORD, not the panel: the panel keeps
+  //: whatever address it now has. Correcting the database is safe and reversible;
+  //: writing an address INTO a panel is not (a wrong one makes it unreachable and
+  //: it can only be put right on site), which is why that is not offered.
+  body.querySelectorAll('button[data-fixip]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const deviceId = Number(button.dataset.fixip);
+      const nextIp = button.dataset.ip;
+      const oldIp = button.dataset.old;
+      const ok = await askConfirm({
+        title: `Ubah IP device di dashboard jadi ${nextIp}?`,
+        detail: 'Yang berubah hanya catatan di database, bukan pengaturan panel. '
+          + `Panel ini menjawab di ${nextIp}, sementara dashboard selama ini `
+          + `menghubunginya di ${oldIp}. Bisa diubah lagi kapan saja lewat tab Device.`,
+        confirmLabel: 'Ya, perbarui di dashboard',
+      });
+      if (!ok) {
+        say($('#sc-msg'), 'Dibatalkan - IP di dashboard tidak diubah.');
+        return;
+      }
+      button.disabled = true;
+      try {
+        await api(`/api/devices/${deviceId}`, 'PATCH', { ip: nextIp });
+        scanRows = scanRows.map(row => (row.device_id === deviceId
+          ? { ...row, device_ip: nextIp } : row));
+        renderScanRows();
+        await loadDevices();
+        say($('#sc-msg'), `IP device di dashboard diperbarui jadi ${nextIp}. `
+          + 'PANEL TIDAK DIUBAH - pengaturan jaringan panel tetap seperti semula.');
+      } catch (err) {
+        say($('#sc-msg'), 'Gagal memperbarui IP: ' + err.message, true);
+        button.disabled = false;
+      }
+    });
+  });
+}
+
+async function runScan() {
+  const msg = $('#sc-msg');
+  const progress = $('#sc-progress');
+  const ranges = $('#sc-ranges').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!ranges.length) { say(msg, 'Isi minimal satu rentang IP, mis. 10.100.1.0/24.', true); return; }
+
+  scanRows = [];
+  $('#sc-body').innerHTML = '<tr><td colspan="8" class="empty">Memindai...</td></tr>';
+  $('#btn-sc-run').disabled = true;
+  const stopClock = sayBusy(msg, 'Memindai');
+  try {
+    const response = await fetch('/api/scan?stream=true', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ranges,
+        port: Number($('#sc-port').value || 4370),
+        timeout: Number($('#sc-timeout').value || 1),
+        identify: $('#sc-identify').checked,
+      }),
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+
+    const summary = await readScanStream(response, event => {
+      if (event.type === 'progress') {
+        progress.textContent = `${event.range}: ${event.done}/${event.total} host dipindai, `
+          + `${event.open} port terbuka`;
+      } else {
+        scanRows.push(event);
+        renderScanRows();
+      }
+    });
+    if (!summary) throw new Error('server tidak mengirim ringkasan hasil');
+    stopClock();
+    say(msg, `${summary.hosts_open} device ditemukan dari ${summary.hosts_scanned} host `
+      + `(${(summary.duration_ms / 1000).toFixed(1)} detik).`, summary.hosts_open === 0);
+    if (!summary.hosts_open) {
+      say(progress, 'Periksa rute server ke subnet itu (petunjuk di atas) sebelum '
+        + 'menyimpulkan panelnya mati.', true);
+    }
+  } catch (err) {
+    stopClock();
+    say(msg, 'Gagal scan: ' + err.message, true);
+  } finally {
+    $('#btn-sc-run').disabled = false;
+  }
+}
+
+$('#btn-sc-run').addEventListener('click', runScan);
+
+/* ------------------- ubah alamat jaringan panel ------------------- */
+//: Nilai yang sudah lolos dry run. Tombol tulis hanya hidup untuk nilai itu, supaya
+//: tidak ada penulisan ke panel yang belum pernah dilihat operator.
+let networkPlanKey = null;
+
+function networkFormKey() {
+  return [$('#nc-device').value, $('#nc-ip').value.trim(),
+          $('#nc-netmask').value.trim(), $('#nc-gateway').value.trim()].join('|');
+}
+
+function invalidateNetworkPlan() {
+  networkPlanKey = null;
+  $('#btn-nc-write').disabled = true;
+}
+
+function fillNetworkDevices() {
+  const select = $('#nc-device');
+  const keep = select.value;
+  select.innerHTML = '<option value="">(pilih device)</option>'
+    + allDevices.slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(d => `<option value="${d.id}">${esc(d.name)} - ${esc(d.ip)}</option>`).join('');
+  select.value = keep && allDevices.some(d => String(d.id) === keep) ? keep : '';
+}
+
+async function loadNetworkState() {
+  const msg = $('#nc-msg');
+  const current = $('#nc-current');
+  const status = $('#nc-status');
+  invalidateNetworkPlan();
+  if (!$('#nc-device').value) {
+    current.textContent = 'Pilih device untuk membaca konfigurasi jaringan panel.';
+    return;
+  }
+  say(msg, 'Membaca konfigurasi panel...');
+  try {
+    const net = await api(`/api/devices/${$('#nc-device').value}/network`);
+    // Status saklar tulis di sisi server, ditampilkan SEBELUM operator mencoba menulis:
+    // sebelumnya alasan "tidak bisa" baru muncul sebagai galat setelah konfirmasi.
+    if (net.write_enabled) {
+      say(status, 'Menulis alamat ke panel: AKTIF di server ini. Tetap wajib "Cek dulu" '
+        + 'dan uji di satu panel dulu.');
+    } else {
+      say(status, 'Menulis alamat ke panel: NONAKTIF. Server ini harus dijalankan dengan '
+        + 'PANEL_NETWORK_WRITE_ENABLED=true supaya tombol tulisnya bekerja; '
+        + '"Cek dulu (dry run)" tetap bisa dipakai untuk melihat rencananya.', true);
+    }
+    // Netmask disalin karena memang terbaca. Gateway TIDAK: firmware ini tidak
+    // melaporkannya, dan menebak gateway bisa memutus rute keluar panel.
+    $('#nc-netmask').value = net.netmask || $('#nc-netmask').value;
+    $('#nc-gateway').value = net.gateway || '';
+    current.textContent = `Panel: IP ${net.ip_address || '-'} · netmask `
+      + `${net.netmask || '-'} · gateway ${net.gateway || '(tidak dilaporkan / kosong)'} `
+      + `· MAC ${net.mac || '-'} · dashboard memakai ${net.ip}:${net.port}`;
+    say(msg, 'Konfigurasi panel terbaca. Isi IP baru, lalu "Cek dulu".');
+  } catch (err) {
+    say(msg, 'Gagal membaca konfigurasi panel: ' + err.message, true);
+    current.textContent = '';
+  }
+}
+
+function networkPayload() {
+  return {
+    ip: $('#nc-ip').value.trim(),
+    netmask: $('#nc-netmask').value.trim(),
+    gateway: $('#nc-gateway').value.trim(),
+  };
+}
+
+$('#btn-nc-dry').addEventListener('click', async () => {
+  const msg = $('#nc-msg');
+  const deviceId = $('#nc-device').value;
+  if (!deviceId) { say(msg, 'Pilih device dulu.', true); return; }
+  const payload = networkPayload();
+  if (!payload.ip) { say(msg, 'Isi IP baru dulu.', true); return; }
+
+  invalidateNetworkPlan();
+  $('#btn-nc-dry').disabled = true;
+  sayBusy(msg, 'Menghitung rencana');
+  try {
+    const plan = await api(`/api/devices/${deviceId}/network?dry_run=true`, 'POST', payload);
+    networkPlanKey = networkFormKey();
+    $('#btn-nc-write').disabled = false;
+    say(msg, `Dry run - ${plan.name} akan ditulis IP ${plan.params.IPAddress}, netmask `
+      + `${plan.params.NetMask}, gateway ${plan.params.GATEWAY || '(kosong)'}. `
+      + 'BELUM ada yang ditulis ke panel.');
+    say($('#nc-current'), plan.warnings.join(' '), true);
+  } catch (err) {
+    say(msg, 'Tidak bisa dilanjutkan: ' + err.message, true);
+  } finally {
+    $('#btn-nc-dry').disabled = false;
+  }
+});
+
+$('#btn-nc-write').addEventListener('click', async () => {
+  const msg = $('#nc-msg');
+  const deviceId = Number($('#nc-device').value);
+  const payload = networkPayload();
+
+  // Dua syarat sebelum menulis: nilai ini pernah di-dry-run, dan tidak berubah sejak itu.
+  if (!networkPlanKey || networkPlanKey !== networkFormKey()) {
+    invalidateNetworkPlan();
+    say(msg, 'Jalankan "Cek dulu (dry run)" untuk nilai ini dulu sebelum menulis.', true);
+    return;
+  }
+  const device = allDevices.find(d => d.id === deviceId);
+  const ok = await askConfirm({
+    title: `Tulis alamat baru ${payload.ip} ke panel ${device ? device.name : deviceId}?`,
+    detail: `Panel ini sekarang di ${device ? device.ip : '?'} dan akan pindah ke `
+      + `${payload.ip} (netmask ${payload.netmask}, gateway ${payload.gateway || 'kosong'}). `
+      + 'Setelah ditulis, panel TIDAK lagi menjawab di alamat lama. Kalau alamat barunya '
+      + 'salah, panel hanya bisa diperbaiki langsung di lokasinya - tidak bisa '
+      + 'dibatalkan dari sini.',
+    confirmLabel: 'Ya, tulis ke panel',
+  });
+  if (!ok) {
+    say(msg, 'Dibatalkan - panel tidak diubah.');
+    return;
+  }
+
+  $('#btn-nc-write').disabled = true;
+  const stopClock = sayBusy(msg, 'Menulis ke panel');
+  try {
+    const result = await api(`/api/devices/${deviceId}/network?dry_run=false`, 'POST', payload);
+    stopClock();
+    if (result.record_updated) {
+      say(msg, `Selesai: panel sekarang di ${result.new_ip} dan catatan dashboard sudah `
+        + 'disamakan. Cek pintunya sebentar lagi.');
+      await loadDevices();
+      fillNetworkDevices();
+      await loadNetworkState();
+    } else {
+      say(msg, `Perintah tulis diterima panel, tapi panel TIDAK menjawab di ${result.new_ip}. `
+        + 'Catatan dashboard sengaja tidak diubah supaya alamat lama masih terlihat. '
+        + (result.warnings[result.warnings.length - 1] || ''), true);
+    }
+  } catch (err) {
+    stopClock();
+    say(msg, 'Gagal: ' + err.message, true);
+  } finally {
+    invalidateNetworkPlan();
+  }
+});
+
+['#nc-device', '#nc-ip', '#nc-netmask', '#nc-gateway'].forEach(sel => {
+  $(sel).addEventListener('input', invalidateNetworkPlan);
+});
+$('#nc-device').addEventListener('change', loadNetworkState);
+
+/* ---------------------------- monitoring --------------------------- */
+//: Monitoring reads the DATABASE only. A C3 panel accepts one connection at a
+//: time (AGENTS.md rule 12), so a monitor that dialled panels would fight the
+//: scheduler and the push agent and could make healthy panels look offline. The
+//: scheduler does the polling; this page shows what that polling stored.
+const MON_MAX_ROWS = 200;
+let monAbort = null;        // AbortController of the running feed (null = not running)
+let monDone = null;         // resolves once the feed has really closed
+let monDoneResolve = null;  // its resolver, called from the feed's finally block
+let monSeen = 0;            // feed rows currently rendered
+let monDateInitialised = false;  // the "today" default is applied once, not on every load
+
+function fmtTime(value) {
+  if (value === null || value === undefined || value === '') return '\u2014';
+  const when = new Date(value);
+  if (isNaN(when.getTime())) return esc(String(value));
+  return when.toLocaleString('id-ID', { hour12: false });
+}
+
+function statPill(label, value, cls = '') {
+  return `<span class="pill${cls ? ' ' + cls : ''}">${esc(label)}: `
+    + `<b>${esc(value)}</b></span>`;
+}
+
+function localDay() {
+  // Not toISOString(): that is UTC, and at 00:30 WIB it still names yesterday.
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+//: One date for the whole tab: the feed shows that day and "Tarik log sekarang" stores
+//: only that day. Sent as wall-clock (no `Z`), which is what the panels record.
+function monWindowQuery() {
+  const day = $('#mon-date').value;
+  if (!day) return '';
+  return `since=${encodeURIComponent(day + 'T00:00:00')}`
+    + `&until=${encodeURIComponent(day + 'T23:59:59')}`;
+}
+
+function monFeedEmptyText() {
+  const day = $('#mon-date').value;
+  return day
+    ? `Belum ada aktivitas tersimpan untuk ${day}. Coba tombol "Semua tanggal", atau tarik log hari itu dari panel.`
+    : 'Belum ada aktivitas.';
+}
+
+function renderMonitorStats(stats) {
+  if (!stats) return;
+  $('#mon-stats').innerHTML =
+    statPill('Panel', stats.devices)
+    + statPill('Online', stats.online, 'on')
+    + statPill('Offline', stats.offline, stats.offline ? 'off' : '')
+    + statPill('Baris log', stats.log_rows)
+    + (stats.events_in_range === null || stats.events_in_range === undefined
+      ? '' : statPill('Dalam tanggal', stats.events_in_range))
+    + statPill('Aktivitas terakhir', stats.last_event_at ? fmtTime(stats.last_event_at) : '\u2014');
+}
+
+function monDeviceRow(device) {
+  const online = device.is_online
+    ? '<span class="on">&#9679; online</span>'
+    : '<span class="off">&#9679; offline</span>';
+  const inactive = device.is_active ? '' : ' <span class="pill none">nonaktif</span>';
+  const users = (device.personnel_count === null || device.personnel_count === undefined)
+    ? '\u2014' : esc(device.personnel_count);
+  return `<tr>
+    <td>${esc(device.name)}${inactive}</td>
+    <td>${esc(device.ip)}:${esc(device.port)}</td>
+    <td>${online}</td>
+    <td>${fmtTime(device.last_seen_at)}</td>
+    <td>${fmtTime(device.last_log_time)}</td>
+    <td class="num">${users}</td>
+    <td class="off">${esc(device.last_error || '')}</td>
+  </tr>`;
+}
+
+function renderMonitorDevices(devices) {
+  const body = $('#mon-devices');
+  if (!devices || !devices.length) {
+    body.innerHTML =
+      '<tr><td colspan="7" class="empty">Belum ada panel terdaftar.</td></tr>';
+    return;
+  }
+  body.innerHTML = devices.map(monDeviceRow).join('');
+}
+
+function monOutcome(event) {
+  if (event.outcome === 'diterima') return '<span class="on">&#10004; diterima</span>';
+  if (event.outcome === 'ditolak') return '<span class="off">&#10008; ditolak</span>';
+  // Everything else is shown uncoloured: a wrong "diterima" on a denial is worse
+  // than no colour at all.
+  return `<span class="msg">${esc(event.event_type || 'lain')}</span>`;
+}
+
+function monFeedRow(event) {
+  const who = event.person_name
+    ? `${esc(event.person_name)} <span class="msg">(${esc(event.employee_id)})</span>`
+    : (event.employee_id ? esc(event.employee_id) : '<span class="msg">\u2014</span>');
+  const haystack = [event.person_name, event.employee_id, event.card_number, event.device_name]
+    .filter(Boolean).join(' ').toLowerCase();
+  const door = (event.door_number === null || event.door_number === undefined)
+    ? '\u2014' : esc(event.door_number);
+  return `<tr data-search="${esc(haystack)}" data-outcome="${esc(event.outcome)}">
+    <td>${fmtTime(event.event_time)}</td>
+    <td>${esc(event.device_name || ('device ' + event.device_id))}</td>
+    <td class="num">${door}</td>
+    <td>${who}</td>
+    <td>${esc(event.card_number || '\u2014')}</td>
+    <td>${esc(event.verification_mode || '\u2014')}</td>
+    <td>${monOutcome(event)}</td>
+  </tr>`;
+}
+
+function resetMonitorFeed() {
+  monSeen = 0;
+  $('#mon-feed').innerHTML =
+    `<tr><td colspan="7" class="empty">${esc(monFeedEmptyText())}</td></tr>`;
+}
+
+function monPrependEvents(events) {
+  if (!events || !events.length) return;
+  const body = $('#mon-feed');
+  if (monSeen === 0) body.innerHTML = '';  // drop the "belum ada aktivitas" row
+  // The server sends newest first, and prepending a newest-first block keeps the
+  // newest row at the top.
+  body.insertAdjacentHTML('afterbegin', events.map(monFeedRow).join(''));
+  monSeen += events.length;
+  // A busy fleet produces thousands of rows a day; the DOM must not grow forever.
+  while (body.children.length > MON_MAX_ROWS) body.lastElementChild.remove();
+  applyMonitorFilter();
+}
+
+function applyMonitorFilter() {
+  const query = ($('#mon-filter').value || '').trim().toLowerCase();
+  const onlyDenied = $('#mon-only-denied').checked;
+  $('#mon-feed').querySelectorAll('tr[data-search]').forEach(row => {
+    const matches = !query || row.dataset.search.indexOf(query) !== -1;
+    const deniedOnly = !onlyDenied || row.dataset.outcome === 'ditolak';
+    row.hidden = !(matches && deniedOnly);
+  });
+}
+
+function monPollingWarning(polling) {
+  const el = $('#mon-poll-warning');
+  if (!polling || polling.enabled) {
+    el.hidden = true;
+    el.textContent = '';
+    el.classList.remove('error');
+    return;
+  }
+  // Without this the page looks broken: the feed stands still because nothing is
+  // polling the panels, not because nobody walked through a door.
+  el.hidden = false;
+  el.classList.add('error');
+  el.textContent = 'Polling otomatis MATI (SCHEDULER_ENABLED=false), jadi tidak ada '
+    + 'yang menarik log dari panel dan feed ini tidak akan bergerak sendiri. Tekan '
+    + '"Tarik log sekarang", atau nyalakan scheduler pada proses server.';
+}
+
+function monitorStatusLine(message) {
+  const el = $('#mon-status');
+  const events = message.events || [];
+  if (message.type === 'snapshot') {
+    say(el, events.length
+      ? `Pantau aktif \u00b7 ${events.length} aktivitas terakhir dimuat.`
+      : 'Pantau aktif \u00b7 belum ada aktivitas tersimpan.');
+    return;
+  }
+  if (events.length) {
+    say(el, `Pantau aktif \u00b7 ${events.length} aktivitas baru \u00b7 terakhir `
+      + fmtTime(events[0].event_time));
+    return;
+  }
+  // An idle tick must still look alive, or a quiet night reads as a dead stream.
+  say(el, 'Pantau aktif \u00b7 pemeriksaan terakhir '
+    + new Date().toLocaleTimeString('id-ID'));
+}
+
+function handleMonitorMessage(message) {
+  // A second snapshot (a reconnect) replaces the feed instead of appending to it.
+  if (message.type === 'snapshot') resetMonitorFeed();
+  if (message.devices) renderMonitorDevices(message.devices);
+  monPollingWarning(message.polling);
+  renderMonitorStats(message.stats);
+  monPrependEvents(message.events || []);
+  monitorStatusLine(message);
+}
+
+async function readMonitorStream(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();  // a partial line waits for the rest of its bytes
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        handleMonitorMessage(JSON.parse(line));
+      } catch (err) {
+        // One unreadable line must not kill an otherwise healthy feed.
+      }
+    }
+  }
+}
+
+async function startMonitor() {
+  if (monAbort) return;  // never two feeds at once
+  const interval = Number($('#mon-interval').value) || 5;
+  const window = monWindowQuery();
+  monAbort = new AbortController();
+  monDone = new Promise(resolve => { monDoneResolve = resolve; });
+  $('#btn-mon-start').hidden = true;
+  $('#btn-mon-stop').hidden = false;
+  try {
+    const res = await fetch(
+      `/api/monitor/stream?interval=${encodeURIComponent(interval)}` + (window ? '&' + window : ''),
+      {
+        signal: monAbort.signal,
+        headers: { Accept: 'application/x-ndjson' },
+      },
+    );
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    await readMonitorStream(res);
+    say($('#mon-status'), 'Pemantauan dihentikan.');
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      say($('#mon-status'), 'Pemantauan dihentikan.');
+      return;
+    }
+    say($('#mon-status'), 'Gagal memantau: ' + err.message, true);
+  } finally {
+    monAbort = null;
+    $('#btn-mon-start').hidden = false;
+    $('#btn-mon-stop').hidden = true;
+    if (monDoneResolve) { monDoneResolve(); monDoneResolve = null; }
+    monDone = null;
+  }
+}
+
+function stopMonitor() {
+  if (monAbort) monAbort.abort();
+}
+
+async function loadMonitor() {
+  // A monitoring page is about today, so start there — but only the FIRST time the tab
+  // is opened: re-applying it on every load would undo "Semua tanggal" the moment the
+  // operator pressed it.
+  if (!monDateInitialised) {
+    if (!$('#mon-date').value) $('#mon-date').value = localDay();
+    monDateInitialised = true;
+  }
+  const window = monWindowQuery();
+  try {
+    const snapshot = await api('/api/monitor/snapshot' + (window ? '?' + window : ''));
+    renderMonitorDevices(snapshot.devices);
+    renderMonitorStats(snapshot.stats);
+    monPollingWarning(snapshot.polling);
+    resetMonitorFeed();
+    monPrependEvents(snapshot.events || []);
+  } catch (err) {
+    say($('#mon-status'), 'Gagal memuat data monitoring: ' + err.message, true);
+  }
+  // A feed that is already running still points at the previous window/interval, so
+  // it has to be reopened rather than left alone.
+  if (monAbort) await restartMonitor();
+  else startMonitor();
+}
+
+$('#btn-mon-start').addEventListener('click', startMonitor);
+$('#btn-mon-stop').addEventListener('click', stopMonitor);
+
+//: The window and the interval are both read when the stream opens, so changing either
+//: means reopening it. Waiting for `monDone` avoids the race where the old feed is still
+//: closing and the new one refuses to start.
+async function restartMonitor() {
+  if (!monAbort) return;  // not running: the next start picks the value up anyway
+  const closing = monDone;
+  stopMonitor();
+  if (closing) await closing;
+  startMonitor();
+}
+
+$('#mon-interval').addEventListener('change', restartMonitor);
+$('#mon-date').addEventListener('change', async () => {
+  resetMonitorFeed();
+  await loadMonitor();  // re-read the snapshot so the feed matches the new day at once
+});
+$('#btn-mon-today').addEventListener('click', async () => {
+  $('#mon-date').value = localDay();
+  resetMonitorFeed();
+  await loadMonitor();
+});
+$('#btn-mon-all').addEventListener('click', async () => {
+  $('#mon-date').value = '';
+  resetMonitorFeed();
+  await loadMonitor();
+});
+
+$('#btn-mon-pull').addEventListener('click', async () => {
+  const msg = $('#mon-status');
+  const day = $('#mon-date').value;
+  const window = monWindowQuery();
+  const proceed = await askConfirm({
+    title: 'Tarik log dari semua panel?',
+    detail: 'Setiap panel dibaca satu per satu. Panel C3 hanya menerima satu koneksi '
+      + 'sekali, jadi kalau ada push sedang berjalan sebagian panel bisa gagal dan '
+      + 'perlu diulang. Operasi ini hanya membaca.\n\n'
+      + (day
+        ? `Hanya log tanggal ${day} yang akan DISIMPAN. Panel tetap mengirim seluruh `
+          + 'isi buffer transaksinya, jadi baris tanggal lain ikut terbaca lalu dibuang.'
+        : 'Semua log panel akan disimpan, termasuk riwayat lama — bisa puluhan ribu '
+          + 'baris per panel. Pilih tanggal dulu kalau hanya ingin satu hari.'),
+    confirmLabel: 'Ya, tarik sekarang',
+  });
+  if (!proceed) {
+    say(msg, 'Dibatalkan \u2014 tidak ada log yang ditarik.');
+    return;
+  }
+  const stopClock = sayBusy(msg, 'Menarik log dari semua panel');
+  try {
+    const result = await api('/api/logs/pull' + (window ? '?' + window : ''), 'POST');
+    // The per-panel errors carry the fix ("naikkan ZK_AGENT_BUFFER_SIZE"), and a bare
+    // "22 GAGAL" sends the operator to the server log for something they could act
+    // on right here.
+    const failures = (result.details || []).filter(item => item.error);
+    const skipped = (result.details || []).reduce((total, item) => total + (item.skipped || 0), 0);
+    say(
+      msg,
+      `Tarik log selesai: ${result.succeeded}/${result.total_devices} panel ok`
+        + (result.failed
+          ? `, ${result.failed} GAGAL - ${failures.length ? failures[0].error : 'lihat log server'}.`
+          : '.')
+        + (skipped ? ` ${skipped} baris di luar tanggal dibuang.` : ''),
+      result.failed > 0,
+    );
+  } catch (err) {
+    say(msg, 'Gagal menarik log: ' + err.message, true);
+  } finally {
+    stopClock();
+  }
+});
+
+$('#mon-filter').addEventListener('input', applyMonitorFilter);
+$('#mon-only-denied').addEventListener('change', applyMonitorFilter);
+// Synchronous, like the personnel search: deferring select() swallows the first key.
+$('#mon-filter').addEventListener('focus', event => event.target.select());
+
+/* --------------------------- users (admin) --------------------------- */
+//: Admin-only tab. The server refuses these calls for an HR session, so the tab
+//: is hidden for HR anyway — this code does not need its own permission check,
+//: and deliberately has none: two places deciding who may do what is how the two
+//: answers start disagreeing.
+const USER_COLUMNS = 6;
+
+function userRow(user) {
+  const active = user.is_active;
+  const nextRole = user.role === 'admin' ? 'hr' : 'admin';
+  return `
+    <tr>
+      <td>${esc(user.username)}
+          ${user.must_change_password ? '<span class="pill">password default</span>' : ''}</td>
+      <td>${esc(user.full_name) || '-'}</td>
+      <td>${esc(ROLE_LABEL[user.role] || user.role)}</td>
+      <td class="${active ? 'on' : 'off'}">${active ? 'aktif' : 'nonaktif'}</td>
+      <td>${esc(fmtTime(user.last_login_at))}</td>
+      <td>
+        <button class="tiny ghost" data-role="${user.id}" data-role-next="${nextRole}"
+                data-name="${esc(user.username)}">
+          Jadikan ${nextRole === 'admin' ? 'Admin' : 'HR'}
+        </button>
+        <button class="tiny ghost" data-active="${user.id}" data-active-next="${active ? 'false' : 'true'}"
+                data-name="${esc(user.username)}">
+          ${active ? 'Nonaktifkan' : 'Aktifkan'}
+        </button>
+        <button class="tiny ghost" data-pass="${user.id}" data-name="${esc(user.username)}">
+          Reset password
+        </button>
+        <button class="tiny danger" data-del="${user.id}" data-name="${esc(user.username)}">Hapus</button>
+      </td>
+    </tr>`;
+}
+
+async function loadUsers() {
+  const msg = $('#u-msg');
+  say(msg, 'Memuat...');
+  try {
+    const users = await api('/api/users');
+    $('#u-body').innerHTML = users.map(userRow).join('')
+      || `<tr><td colspan="${USER_COLUMNS}" class="empty">Belum ada pengguna.</td></tr>`;
+    bindUserActions();
+    say(msg, `${users.length} pengguna.`);
+  } catch (err) {
+    say(msg, 'Gagal memuat pengguna: ' + err.message, true);
+  }
+}
+
+async function addUser() {
+  const msg = $('#u-form-msg');
+  const username = $('#u-username').value.trim();
+  const password = $('#u-password').value;
+  const role = $('#u-role').value;
+  const fullName = $('#u-fullname').value.trim();
+  if (!username || !password) {
+    say(msg, 'Nama pengguna dan password wajib diisi.', true);
+    return;
+  }
+  $('#btn-u-add').disabled = true;
+  say(msg, 'Menyimpan...');
+  try {
+    await api('/api/users', 'POST', {
+      username, password, role, full_name: fullName || null,
+    });
+    $('#u-username').value = '';
+    $('#u-password').value = '';
+    $('#u-fullname').value = '';
+    say(msg, `Pengguna '${username}' dibuat (${ROLE_LABEL[role] || role}).`);
+    loadUsers();
+  } catch (err) {
+    // The server's message names the field and the value that clashed, so it is
+    // shown as-is instead of being flattened into "gagal".
+    say(msg, 'Gagal menambah: ' + err.message, true);
+  } finally {
+    $('#btn-u-add').disabled = false;
+  }
+}
+
+async function setUserRole(button) {
+  const next = button.dataset.roleNext;
+  const username = button.dataset.name;
+  const proceed = await askConfirm({
+    title: `Jadikan ${username} ${ROLE_LABEL[next]}?`,
+    detail: next === 'admin'
+      ? 'Admin boleh membuka semua tab: device, kontrol pintu, scan jaringan, '
+        + 'alamat panel, jam akses, dan akun pengguna.'
+      : 'HR hanya mengurus personel, departemen, dan access level. Buka pintu, '
+        + 'pengaturan device, dan akun pengguna jadi tertutup untuk akun ini.',
+    confirmLabel: 'Ya, ubah role',
+  });
+  if (!proceed) {
+    say($('#u-msg'), 'Dibatalkan - role tidak diubah.');
+    return;
+  }
+  try {
+    await api(`/api/users/${button.dataset.role}`, 'PATCH', { role: next });
+    say($('#u-msg'), `Role ${username} sekarang ${ROLE_LABEL[next]}.`);
+  } catch (err) {
+    say($('#u-msg'), 'Gagal ubah role: ' + err.message, true);
+  }
+  loadUsers();
+}
+
+async function setUserActive(button) {
+  const next = button.dataset.activeNext === 'true';
+  const username = button.dataset.name;
+  if (!next) {
+    const proceed = await askConfirm({
+      title: `Nonaktifkan ${username}?`,
+      detail: 'Akun ini tidak bisa login lagi dan sesinya yang sedang jalan langsung '
+        + 'diputus. Akunnya tetap ada, jadi bisa diaktifkan lagi nanti.',
+      confirmLabel: 'Ya, nonaktifkan',
+    });
+    if (!proceed) {
+      say($('#u-msg'), 'Dibatalkan - akun masih aktif.');
+      return;
+    }
+  }
+  try {
+    await api(`/api/users/${button.dataset.active}`, 'PATCH', { is_active: next });
+    say($('#u-msg'), `${username} sekarang ${next ? 'aktif' : 'nonaktif'}.`);
+  } catch (err) {
+    // "Menolak menonaktifkan 'admin': itu satu-satunya admin yang aktif" — that
+    // message is the whole point, so it is shown verbatim.
+    say($('#u-msg'), 'Gagal ubah status: ' + err.message, true);
+  }
+  loadUsers();
+}
+
+async function resetUserPassword(button) {
+  const username = button.dataset.name;
+  const values = await askForm({
+    title: `Reset password ${username}`,
+    detail: 'Semua sesi akun ini akan diputus. Password baru minimal 4 karakter.',
+    fields: [{ name: 'password', label: 'Password baru', type: 'password' }],
+    confirmLabel: 'Reset password',
+  });
+  if (!values) return;
+  try {
+    await api(`/api/users/${button.dataset.pass}`, 'PATCH', { password: values.password });
+    say($('#u-msg'), `Password ${username} sudah diganti dan sesinya diputus.`);
+  } catch (err) {
+    say($('#u-msg'), 'Gagal reset password: ' + err.message, true);
+  }
+  loadUsers();
+}
+
+async function deleteUser(button) {
+  const username = button.dataset.name;
+  const proceed = await askConfirm({
+    title: `Hapus akun ${username}?`,
+    detail: 'Akun dan sesinya dihapus. Data personel, departemen, dan access level '
+      + 'TIDAK terpengaruh. Kalau hanya ingin memutus akses login, pakai '
+      + '"Nonaktifkan" supaya akunnya masih bisa dipakai lagi.',
+    confirmLabel: 'Ya, hapus akun',
+  });
+  if (!proceed) {
+    say($('#u-msg'), 'Dibatalkan - akun tidak dihapus.');
+    return;
+  }
+  try {
+    await api(`/api/users/${button.dataset.del}`, 'DELETE');
+    say($('#u-msg'), `Akun ${username} sudah dihapus.`);
+  } catch (err) {
+    say($('#u-msg'), 'Gagal menghapus: ' + err.message, true);
+  }
+  loadUsers();
+}
+
+function bindUserActions() {
+  $('#u-body').querySelectorAll('button[data-role]').forEach(button => {
+    button.addEventListener('click', () => setUserRole(button));
+  });
+  $('#u-body').querySelectorAll('button[data-active]').forEach(button => {
+    button.addEventListener('click', () => setUserActive(button));
+  });
+  $('#u-body').querySelectorAll('button[data-pass]').forEach(button => {
+    button.addEventListener('click', () => resetUserPassword(button));
+  });
+  $('#u-body').querySelectorAll('button[data-del]').forEach(button => {
+    button.addEventListener('click', () => deleteUser(button));
+  });
+}
+
+$('#btn-u-add').addEventListener('click', addUser);
+$('#btn-u-refresh').addEventListener('click', loadUsers);
+
+/* ------------------------------ boot ------------------------------ */
+//: Boot is now two steps: ask the server who we are, then hand over to
+//: `startSession`. Nothing is loaded before that, so an unauthenticated visitor
+//: never sees a tab, a count or a name.
+async function boot() {
+  const me = await fetchMe();
+  if (!me) {
+    showLogin('');
+    return;
+  }
+  startSession(me);
+}
+
+boot();
+</script>
+</body>
+</html>

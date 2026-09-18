@@ -1,0 +1,95 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Jalankan backend (hidup di latar)",
+      "detail": "uvicorn di port 8000 sebagai proses latar + auto-restart. Tombol tercepat: Ctrl+Shift+B.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\zkteco-backend\\deploy\\serve_backend.ps1",
+        "-Action",
+        "start"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "close": true
+      }
+    },
+    {
+      "label": "Hentikan backend",
+      "detail": "Menghentikan supervisor beserta seluruh anak prosesnya, lalu memastikan port 8000 bebas.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\zkteco-backend\\deploy\\serve_backend.ps1",
+        "-Action",
+        "stop"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "close": true
+      }
+    },
+    {
+      "label": "Status backend",
+      "detail": "PID supervisor, pemakai port 8000, balasan /health, dan 15 baris log terakhir.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\zkteco-backend\\deploy\\serve_backend.ps1",
+        "-Action",
+        "status"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "close": true
+      }
+    },
+    {
+      "label": "Ikuti log backend (Ctrl+C untuk berhenti)",
+      "detail": "Menampilkan logs/backend.log secara langsung. Menutup terminal ini TIDAK mematikan backend.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "Get-Content -LiteralPath '${workspaceFolder}\\zkteco-backend\\logs\\backend.log' -Wait -Tail 30"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}

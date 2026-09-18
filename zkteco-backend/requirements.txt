@@ -1,0 +1,15 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+alembic>=1.13
+apscheduler>=3.10
+pydantic>=2.7
+pydantic-settings>=2.2
+
+# Pull SDK client for ZKTeco C3 panels (read-only protocol implementation)
+zkaccess-c3==0.0.15
+
+# --- dev / test ---
+pytest>=8.0
+httpx>=0.27

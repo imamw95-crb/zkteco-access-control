@@ -1,0 +1,35 @@
+[Unit]
+Description=ZKTeco C3 Access Control worker (log polling + health checks)
+Documentation=file:/opt/zkteco-backend/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+# Only one worker may run: running two would double-poll every panel.
+PartOf=zkteco-api.service
+
+[Service]
+Type=exec
+User=zkteco
+Group=zkteco
+WorkingDirectory=/opt/zkteco-backend
+EnvironmentFile=/opt/zkteco-backend/.env
+Environment=SCHEDULER_ENABLED=true
+
+ExecStart=/opt/zkteco-backend/.venv/bin/python -m app.workers.run
+
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/zkteco-backend
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zkteco-worker
+
+[Install]
+WantedBy=multi-user.target

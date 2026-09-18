@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+*.db
+*.sqlite3
+test_zkteco.db
+live_check.db
+alembic_gen.db
+
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runtime output of the Windows push agent
+agent/*.log
+agent/*.log.err

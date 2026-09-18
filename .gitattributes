@@ -1,0 +1,31 @@
+# Akhiran baris ditentukan di sini, bukan di `core.autocrlf` (di laptop ini `true`).
+#
+# Kenapa ini penting: `deploy/push_to_server.ps1` mengirim `deploy/*.sh` APA ADANYA
+# ke server Linux lewat tar. Kalau git meng-checkout berkas itu sebagai CRLF, bash
+# di server membaca `set -eu\r` sebagai nama perintah dan deploy gagal.
+# `tests/test_deploy_scripts.py` menolak setiap `\r` di `deploy/*.sh`, jadi tanpa
+# aturan ini clone baru di Windows langsung menggagalkan tes.
+#
+# Pola spesifik ditulis SETELAH `*` karena pada gitattributes pola terakhir menang.
+
+* text=auto
+
+*.sh  text eol=lf
+*.env.example text eol=lf
+*.md  text eol=lf
+*.py  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Skrip Windows: cmd.exe dan PowerShell 5.1 lebih aman dengan CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Biner: jangan disentuh sama sekali.
+*.db    binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.xls   binary
+*.xlsx  binary
