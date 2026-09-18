@@ -139,6 +139,130 @@ ke agent Windows yang sama (`http://10.100.1.100:8081`), jadi PC agent harus hid
 laptop masih hidup, `worker` di server sengaja **tidak** dinyalakan (panel hanya menerima satu
 koneksi sekaligus).
 
+## Alur program
+
+### Lapisan: siapa boleh memanggil siapa
+
+Aturan arsitektur yang ditegakkan: **route tidak pernah `import c3`** — semua lewat service, dan
+hanya `device_client.py` yang menyentuh library panel.
+
+```mermaid
+flowchart TB
+    B["Browser: dashboard.html<br/>(satu berkas, vanilla JS)"]
+    OPS["Skrip ops / curl"]
+
+    subgraph API["app/api — FastAPI"]
+        RT["router /api/*"]
+        GR["deps.py: require_login / require_admin<br/>fail-closed"]
+    end
+
+    subgraph SVC["app/services"]
+        DVS["device_service / sync_service"]
+        PES["personnel_service / access_group_service"]
+        LOS["log_service"]
+        MOS["monitor_service"]
+        PUP["panel_push<br/>(hitung record, tanpa I/O)"]
+        PUA["push_agent<br/>(klien HTTP)"]
+    end
+
+    DC["device_client.py<br/>SATU-SATUNYA yang import c3<br/>+ c3_compat.py"]
+    DB[("DB - SQLite di dev, PostgreSQL di server")]
+    PN["Panel C3<br/>10.100.1.x:4370"]
+    AG["Agent Windows 32-bit<br/>+ plcommpro.dll"]
+
+    B --> RT
+    OPS --> RT
+    RT --> GR --> SVC
+    SVC --> DB
+    DVS --> DC
+    LOS --> DC
+    MOS --> DB
+    DC --> PN
+    PUP --> PUA
+    PUA --> AG
+    AG --> PN
+```
+
+Catatan yang mudah salah:
+
+- **`monitor_service` membaca DB saja, tidak pernah menyentuh panel.** Dashboard Monitoring tidak
+  boleh membuat panel sibuk.
+- **Scheduler hidup di proses terpisah** (`app/workers/run.py`, `SCHEDULER_ENABLED=true`). Instance
+  API memakai `SCHEDULER_ENABLED=false`, kalau tidak setiap worker uvicorn menjalankan ulang job
+  yang sama → log ganda.
+- Penjaga login terpasang **di router** (`app/api/__init__.py` + `deps.py`), bukan di tiap handler.
+  `tests/test_auth.py` menyisir **setiap** route terdaftar dan gagal kalau ada yang bisa dibuka
+  tanpa sesi.
+
+### Urutan satu kali push ke panel
+
+Push selalu **baca dulu, tulis kemudian**, dan dihitung per panel (`user`/`userauthorize`/`timezone`
+tidak punya kolom device).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Operator
+    participant D as Dashboard
+    participant A as API /api/personnel/sync
+    participant P as panel_push
+    participant G as push_agent
+    participant W as Agent Windows
+    participant N as Panel
+
+    U->>D: "Samakan ke semua panel"
+    D->>A: POST personnel_ids=531, stream=true
+    A->>A: assert_push_ready() - 503 kalau PUSH_AGENT_URL kosong
+    loop setiap panel, sekuensial (panel = satu koneksi)
+        A->>P: record yang SEHARUSNYA ada di panel itu
+        P->>G: BACA panel dulu
+        G->>W: GET /panels/{ip}/tables/{table}
+        W->>N: GetDeviceData
+        N-->>W: records
+        W-->>P: keadaan panel sekarang
+        Note over P: panel tidak terbaca = TIDAK ADA YANG DITULIS<br/>jangan pernah jatuh ke mode kirim-semua
+        P->>P: diff + _carry_over()<br/>(field yang tidak kita kirim disalin dari panel)
+        P->>W: POST /panels/{ip}/tables/{table}
+        W->>N: SetDeviceData / hapus userauthorize
+        P-->>A: hasil panel ini
+        A-->>D: satu baris NDJSON, langsung saat panel itu selesai
+    end
+    D->>U: ringkasan per panel - yang gagal tetap MASIH memakai data lama
+```
+
+Gerbang yang tidak boleh dilewati: `dry_run=true` → lapor → **izin user** → satu panel uji →
+verifikasi (`scripts/verify_person_on_panels.py`) → baru meluas. Sapuan armada melaporkan hasil
+**per panel** — "selesai" saja tidak cukup, karena panel yang gagal masih memegang data lama.
+
+### Log akses & monitoring
+
+```mermaid
+flowchart LR
+    N["Panel"] --> L["log_service<br/>(satu field per request)"]
+    L -->|"1. agent dulu"| AG["Agent Windows"]
+    L -->|"2. fallback library c3"| DC["device_client"]
+    L --> AL[("access_logs - dedupe_key UNIQUE, idempoten")]
+    AL --> M["monitor_service<br/>(baca DB saja)"]
+    M --> D["Dashboard Monitoring"]
+    S["workers/scheduler<br/>APScheduler"] -->|"60 s"| L
+    S -->|"120 s"| H["sync_service health check"]
+```
+
+Urutan **agent dulu, library belakangan** itu disengaja: tabel `transaction` tidak bisa dibaca
+multi-field di firmware ini, dan pesan errornya berbeda (`-112` = buffer, `-2`/`-107` = sibuk).
+Kegagalan baca **bukan** kegagalan tulis — ulangi, jangan simpulkan panel mati.
+
+### Saat start (`lifespan` di `app/main.py`)
+
+1. `Base.metadata.create_all()` — hanya untuk DB baru; Alembic tetap sumber kebenaran skema.
+2. Seed time zone `"24 Jam"` (semua panel memakai slot 1).
+3. Seed akun dari `AUTH_SEED_USERS` — **hanya kalau tabel `users` kosong**, dan ditandai
+   `must_change_password`.
+4. `start_scheduler()` — tidak melakukan apa pun kalau `SCHEDULER_ENABLED=false`.
+
+> `dashboard.html` dibaca **saat import**. Setelah mengubahnya, backend harus **di-restart** —
+> reload file saja tidak cukup.
+
 ## Aturan yang tidak boleh dilanggar
 
 Lihat `AGENTS.md` §3 (aturan emas) — ringkasnya: route API tidak pernah `import c3`; tulis ke
